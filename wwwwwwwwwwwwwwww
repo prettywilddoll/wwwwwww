@@ -1,0 +1,684 @@
+-- Скрипт-менеджер для инжектора (выбор между HC и Silent)
+
+local hcScript = [[
+--[[ КОД СКРИПТА HC (local UIS) — полностью скопирован из вашего файла ]]--
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local lp = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+local mouse = lp:GetMouse()
+
+local cfg = {
+    silentAim = true,
+    useKeybind = true,
+    silentAimKey = Enum.KeyCode.V,
+    uiToggleKey = Enum.KeyCode.RightControl,
+    silentAimHitChance = 100,
+    silentAimFOV = 150,
+    silentAimFOVShow = false,
+    silentAimFOVFilled = false,
+    silentAimFOVOpacity = 0.2,
+    silentAimFOVColor = Color3.fromRGB(160, 210, 235),
+    
+    silentAimPart = "Head",
+    silentAimClosestPart = false,
+    
+    silentAimTeamCheck = false,
+    silentAimWallCheck = false,
+    silentAimMaxDist = 1000,
+    
+    silentAimPredX = 0,
+    silentAimPredY = 0,
+    
+    bypassRevolver = false,
+}
+
+local bodyPartsList = {
+    "Head", "UpperTorso", "HumanoidRootPart", "LowerTorso",
+    "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+    "LeftHand", "RightHand", "LeftUpperLeg", "RightLowerLeg",
+    "LeftLowerLeg", "RightLowerLeg", "LeftFoot", "RightFoot"
+}
+
+
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 1.5
+fovCircle.NumSides = 64
+fovCircle.Radius = cfg.silentAimFOV
+fovCircle.Color = cfg.silentAimFOVColor
+fovCircle.Filled = cfg.silentAimFOVFilled
+fovCircle.Visible = cfg.silentAimFOVShow
+fovCircle.Transparency = 1 - cfg.silentAimFOVOpacity
+
+local silentAimCachedPart = nil
+
+local function isHoldingRevolver()
+    if not cfg.bypassRevolver then return false end
+    local char = lp.Character
+    if not char then return false end
+    
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool then
+        local toolName = string.lower(tool.Name)
+        if string.find(toolName, "revolver") or string.find(toolName, "rev") then
+            return true
+        end
+    end
+    return false
+end
+
+local function getHum(p)
+    local c = p and p.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function getHRP(p)
+    local c = p and p.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function isAlive(p)
+    local h = getHum(p)
+    return h and h.Health > 0
+end
+
+local function sameTeam(p)
+    return lp.Team and p.Team and lp.Team == p.Team
+end
+
+local function wallBetween(pos)
+    if not cfg.silentAimWallCheck then return false end
+    local ro = cam.CFrame.Position
+    local rd = pos - ro
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {lp.Character}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local hit = workspace:Raycast(ro, rd, params)
+    if not hit then return false end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character and hit.Instance:IsDescendantOf(p.Character) then return false end
+    end
+    return true
+end
+
+local function safeWorldToViewportPoint(pos)
+    local sp, on = Vector3.new(), false
+    pcall(function()
+        sp, on = cam:WorldToViewportPoint(pos)
+    end)
+    return sp, on
+end
+
+local function getClosestBodyPart(char)
+    local closestPart, shortestDist = nil, math.huge
+    local mousePos = UIS:GetMouseLocation()
+    for _, pName in ipairs(bodyPartsList) do
+        local part = char:FindFirstChild(pName)
+        if part then
+            local screenPos, onScreen = safeWorldToViewportPoint(part.Position)
+            local dist = onScreen and (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude or math.huge
+            if dist < shortestDist then
+                shortestDist = dist
+                closestPart = part
+            end
+        end
+    end
+    return closestPart or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getTargetPart(char)
+    if not char then return nil end
+    if cfg.silentAimClosestPart then
+        return getClosestBodyPart(char)
+    end
+    return char:FindFirstChild(cfg.silentAimPart) or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getClosestPlayerToCursor()
+    if isHoldingRevolver() then return nil end
+    
+    local closestPlayer = nil
+    local shortestDist = cfg.silentAimFOV
+    local mousePos = UIS:GetMouseLocation()
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= lp and isAlive(p) then
+            if cfg.silentAimTeamCheck and sameTeam(p) then continue end
+            local hrp = getHRP(p)
+            if hrp then
+                local dist3D = (hrp.Position - cam.CFrame.Position).Magnitude
+                if dist3D <= cfg.silentAimMaxDist then
+                    local sp, onScreen = safeWorldToViewportPoint(hrp.Position)
+                    if onScreen then
+                        local dist2D = (Vector2.new(sp.X, sp.Y) - mousePos).Magnitude
+                        if dist2D < shortestDist then
+                            local part = getTargetPart(p.Character)
+                            if part and not wallBetween(part.Position) then
+                                shortestDist = dist2D
+                                closestPlayer = part
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- HOOK METAMETHOD
+local _grm = getrawmetatable(game)
+local _oldIndex = _grm.__index
+setreadonly(_grm, false)
+
+_grm.__index = function(self, key)
+    if not checkcaller() and self == mouse and cfg.silentAim and not isHoldingRevolver() then
+        if (key == "Hit" or key == "Target" or key == "UnitRay") and silentAimCachedPart then
+            if math.random(1, 100) <= cfg.silentAimHitChance then
+                local origin = cam.CFrame.Position
+                local hitPos = silentAimCachedPart.Position + Vector3.new(
+                    silentAimCachedPart.AssemblyLinearVelocity.X * cfg.silentAimPredX,
+                    silentAimCachedPart.AssemblyLinearVelocity.Y * cfg.silentAimPredY,
+                    silentAimCachedPart.AssemblyLinearVelocity.Z * cfg.silentAimPredX
+                )
+                if key == "UnitRay" then
+                    return Ray.new(origin, (hitPos - origin).Unit)
+                elseif key == "Hit" then
+                    return CFrame.new(hitPos)
+                elseif key == "Target" then
+                    return silentAimCachedPart
+                end
+            end
+        end
+    end
+    return _oldIndex(self, key)
+end
+setreadonly(_grm, true)
+
+RunService.RenderStepped:Connect(function()
+    local mousePos = UIS:GetMouseLocation()
+    fovCircle.Position = mousePos
+    fovCircle.Radius = cfg.silentAimFOV
+    fovCircle.Color = cfg.silentAimFOVColor
+    fovCircle.Visible = cfg.silentAim and cfg.silentAimFOVShow and not isHoldingRevolver()
+
+    if cfg.silentAim then
+        silentAimCachedPart = getClosestPlayerToCursor()
+    else
+        silentAimCachedPart = nil
+    end
+end)
+
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PastelSilentAimUI"
+ScreenGui.ResetOnSpawn = false
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = lp:WaitForChild("PlayerGui") end
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.new(0, 360, 0, 420)
+Main.Position = UDim2.new(0.5, -180, 0.5, -210)
+Main.BackgroundColor3 = Color3.fromRGB(242, 248, 252)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = ScreenGui
+
+
+local dragging, dragInput, dragStart, startPos
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    local newX = startPos.X.Offset + delta.X
+    local newY = startPos.Y.Offset + delta.Y
+    
+    local viewport = cam.ViewportSize
+    newX = math.clamp(newX, 0, math.max(0, viewport.X - Main.AbsoluteSize.X))
+    newY = math.clamp(newY, 0, math.max(0, viewport.Y - Main.AbsoluteSize.Y))
+    
+    Main.Position = UDim2.new(0, newX, 0, newY)
+end
+
+Main.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+Main.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        updateDrag(input)
+    end
+end)
+
+local UICorner = Instance.new("UICorner", Main)
+UICorner.CornerRadius = UDim.new(0, 14)
+
+local UIStroke = Instance.new("UIStroke", Main)
+UIStroke.Color = Color3.fromRGB(180, 215, 235)
+UIStroke.Thickness = 2
+
+local Header = Instance.new("Frame", Main)
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 40)
+Header.BackgroundTransparency = 1
+
+local Title = Instance.new("TextLabel", Header)
+Title.Size = UDim2.new(1, -50, 1, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "owwo@HC"
+Title.TextColor3 = Color3.fromRGB(90, 130, 160)
+Title.TextSize = 18
+Title.Font = Enum.Font.FredokaOne
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+
+local MinimizeBtn = Instance.new("TextButton", Header)
+MinimizeBtn.Size = UDim2.new(0, 26, 0, 26)
+MinimizeBtn.Position = UDim2.new(1, -36, 0.5, -13)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(215, 235, 245)
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.fromRGB(90, 130, 160)
+MinimizeBtn.Font = Enum.Font.FredokaOne
+MinimizeBtn.TextSize = 20
+MinimizeBtn.AutoButtonColor = false
+
+local MiniCorner = Instance.new("UICorner", MinimizeBtn)
+MiniCorner.CornerRadius = UDim.new(0, 8)
+
+
+local MiniBubble = Instance.new("TextButton", ScreenGui)
+MiniBubble.Name = "MiniBubble"
+MiniBubble.Size = UDim2.new(0, 48, 0, 48)
+MiniBubble.Position = UDim2.new(0.5, -24, 0.5, -24)
+MiniBubble.BackgroundColor3 = Color3.fromRGB(242, 248, 252)
+MiniBubble.Text = "🌸"
+MiniBubble.TextSize = 22
+MiniBubble.Visible = false
+MiniBubble.Active = true
+
+local bDragging, bDragStart, bStartPos
+MiniBubble.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        bDragging = true
+        bDragStart = input.Position
+        bStartPos = MiniBubble.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                bDragging = false
+            end
+        end)
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if bDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - bDragStart
+        local newX = math.clamp(bStartPos.X.Offset + delta.X, 0, cam.ViewportSize.X - 48)
+        local newY = math.clamp(bStartPos.Y.Offset + delta.Y, 0, cam.ViewportSize.Y - 48)
+        MiniBubble.Position = UDim2.new(0, newX, 0, newY)
+    end
+end)
+
+local BubbleCorner = Instance.new("UICorner", MiniBubble)
+BubbleCorner.CornerRadius = UDim.new(1, 0)
+
+local BubbleStroke = Instance.new("UIStroke", MiniBubble)
+BubbleStroke.Color = Color3.fromRGB(180, 215, 235)
+BubbleStroke.Thickness = 2
+
+local Scroll = Instance.new("ScrollingFrame", Main)
+Scroll.Size = UDim2.new(1, -20, 1, -50)
+Scroll.Position = UDim2.new(0, 10, 0, 40)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.ScrollBarImageColor3 = Color3.fromRGB(160, 200, 225)
+
+local UIList = Instance.new("UIListLayout", Scroll)
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+UIList.Padding = UDim.new(0, 8)
+
+UIList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    Scroll.CanvasSize = UDim2.new(0, 0, 0, UIList.AbsoluteContentSize.Y + 10)
+end)
+
+
+local function minimizeUI()
+    local x = math.clamp(Main.AbsolutePosition.X + (Main.AbsoluteSize.X / 2) - 24, 0, cam.ViewportSize.X - 48)
+    local y = math.clamp(Main.AbsolutePosition.Y + (Main.AbsoluteSize.Y / 2) - 24, 0, cam.ViewportSize.Y - 48)
+    MiniBubble.Position = UDim2.new(0, x, 0, y)
+    Main.Visible = false
+    MiniBubble.Visible = true
+end
+
+local function restoreUI()
+    local x = math.clamp(MiniBubble.AbsolutePosition.X - (Main.AbsoluteSize.X / 2) + 24, 0, cam.ViewportSize.X - Main.AbsoluteSize.X)
+    local y = math.clamp(MiniBubble.AbsolutePosition.Y - (Main.AbsoluteSize.Y / 2) + 24, 0, cam.ViewportSize.Y - Main.AbsoluteSize.Y)
+    Main.Position = UDim2.new(0, x, 0, y)
+    MiniBubble.Visible = false
+    Main.Visible = true
+end
+
+MinimizeBtn.MouseButton1Click:Connect(minimizeUI)
+MiniBubble.MouseButton1Click:Connect(restoreUI)
+
+local function createCard(height)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, -6, 0, height or 40)
+    card.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    card.BorderSizePixel = 0
+    card.Parent = Scroll
+    
+    local c = Instance.new("UICorner", card)
+    c.CornerRadius = UDim.new(0, 8)
+    
+    local s = Instance.new("UIStroke", card)
+    s.Color = Color3.fromRGB(215, 235, 245)
+    s.Thickness = 1
+    return card
+end
+
+local function addToggle(text, default, callback)
+    local card = createCard(40)
+    local lbl = Instance.new("TextLabel", card)
+    lbl.Size = UDim2.new(0.7, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(100, 130, 150)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 15
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", card)
+    btn.Size = UDim2.new(0, 44, 0, 22)
+    btn.Position = UDim2.new(1, -54, 0.5, -11)
+    btn.BackgroundColor3 = default and Color3.fromRGB(150, 205, 230) or Color3.fromRGB(220, 225, 230)
+    btn.Text = ""
+    btn.AutoButtonColor = false
+
+    local bc = Instance.new("UICorner", btn)
+    bc.CornerRadius = UDim.new(1, 0)
+
+    local circle = Instance.new("Frame", btn)
+    circle.Size = UDim2.new(0, 18, 0, 18)
+    circle.Position = default and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+    circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    
+    local cc = Instance.new("UICorner", circle)
+    cc.CornerRadius = UDim.new(1, 0)
+
+    local state = default
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.BackgroundColor3 = state and Color3.fromRGB(150, 205, 230) or Color3.fromRGB(220, 225, 230)
+        circle:TweenPosition(state and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.15, true)
+        callback(state)
+    end)
+end
+
+local function addSlider(text, min, max, default, callback)
+    local card = createCard(50)
+    
+    local lbl = Instance.new("TextLabel", card)
+    lbl.Size = UDim2.new(0.6, 0, 0, 20)
+    lbl.Position = UDim2.new(0, 10, 0, 4)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(100, 130, 150)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 15
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local valLbl = Instance.new("TextLabel", card)
+    valLbl.Size = UDim2.new(0.3, 0, 0, 20)
+    valLbl.Position = UDim2.new(0.7, -10, 0, 4)
+    valLbl.BackgroundTransparency = 1
+    valLbl.Text = tostring(default)
+    valLbl.TextColor3 = Color3.fromRGB(130, 160, 180)
+    valLbl.Font = Enum.Font.SourceSans
+    valLbl.TextSize = 14
+    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+
+    local bg = Instance.new("Frame", card)
+    bg.Size = UDim2.new(1, -20, 0, 8)
+    bg.Position = UDim2.new(0, 10, 0, 30)
+    bg.BackgroundColor3 = Color3.fromRGB(225, 235, 240)
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+
+    local fill = Instance.new("Frame", bg)
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(150, 205, 230)
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+    local sDragging = false
+    local function update(input)
+        local pos = math.clamp((input.Position.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * pos)
+        fill.Size = UDim2.new(pos, 0, 1, 0)
+        valLbl.Text = tostring(val)
+        callback(val)
+    end
+
+    bg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            sDragging = true
+            update(input)
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            sDragging = false
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if sDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            update(input)
+        end
+    end)
+end
+
+local function addDropdown(text, list, default, callback)
+    local card = createCard(40)
+    
+    local lbl = Instance.new("TextLabel", card)
+    lbl.Size = UDim2.new(0.4, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(100, 130, 150)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 15
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", card)
+    btn.Size = UDim2.new(0.55, 0, 0, 26)
+    btn.Position = UDim2.new(0.43, 0, 0.5, -13)
+    btn.BackgroundColor3 = Color3.fromRGB(235, 245, 250)
+    btn.Text = default
+    btn.TextColor3 = Color3.fromRGB(90, 130, 150)
+    btn.Font = Enum.Font.SourceSans
+    btn.TextSize = 14
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    
+    local s = Instance.new("UIStroke", btn)
+    s.Color = Color3.fromRGB(190, 220, 235)
+
+    local dropFrame = Instance.new("ScrollingFrame", Scroll)
+    dropFrame.Size = UDim2.new(1, -6, 0, 120)
+    dropFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dropFrame.Visible = false
+    dropFrame.BorderSizePixel = 0
+    dropFrame.ScrollBarThickness = 3
+    Instance.new("UICorner", dropFrame).CornerRadius = UDim.new(0, 8)
+    
+    local dList = Instance.new("UIListLayout", dropFrame)
+    dList.SortOrder = Enum.SortOrder.LayoutOrder
+
+    dList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        dropFrame.CanvasSize = UDim2.new(0, 0, 0, dList.AbsoluteContentSize.Y)
+    end)
+
+    for _, v in ipairs(list) do
+        local item = Instance.new("TextButton", dropFrame)
+        item.Size = UDim2.new(1, 0, 0, 24)
+        item.BackgroundTransparency = 1
+        item.Text = v
+        item.TextColor3 = Color3.fromRGB(100, 130, 150)
+        item.Font = Enum.Font.SourceSans
+        item.TextSize = 13
+        
+        item.MouseButton1Click:Connect(function()
+            btn.Text = v
+            dropFrame.Visible = false
+            callback(v)
+        end)
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        dropFrame.Visible = not dropFrame.Visible
+    end)
+end
+
+local function addKeybind(text, defaultKey, callback)
+    local card = createCard(40)
+    local lbl = Instance.new("TextLabel", card)
+    lbl.Size = UDim2.new(0.6, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(100, 130, 150)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 15
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", card)
+    btn.Size = UDim2.new(0, 80, 0, 24)
+    btn.Position = UDim2.new(1, -90, 0.5, -12)
+    btn.BackgroundColor3 = Color3.fromRGB(235, 245, 250)
+    btn.Text = defaultKey.Name
+    btn.TextColor3 = Color3.fromRGB(90, 130, 150)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 12
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    
+    local s = Instance.new("UIStroke", btn)
+    s.Color = Color3.fromRGB(190, 220, 235)
+
+    local listening = false
+    btn.MouseButton1Click:Connect(function()
+        listening = true
+        btn.Text = "..."
+    end)
+
+    UIS.InputBegan:Connect(function(input, gpe)
+        if listening and not gpe and input.UserInputType == Enum.UserInputType.Keyboard then
+            listening = false
+            btn.Text = input.KeyCode.Name
+            callback(input.KeyCode)
+        end
+    end)
+end
+
+
+addToggle("Silent Aim", cfg.silentAim, function(v) cfg.silentAim = v end)
+addToggle("Show FOV Circle", cfg.silentAimFOVShow, function(v) cfg.silentAimFOVShow = v end)
+addSlider("FOV Size", 10, 500, cfg.silentAimFOV, function(v) cfg.silentAimFOV = v end)
+addToggle("Bypass Revolver", cfg.bypassRevolver, function(v) cfg.bypassRevolver = v end)
+addToggle("Wall Check", cfg.silentAimWallCheck, function(v) cfg.silentAimWallCheck = v end)
+addToggle("Target Closest Part", cfg.silentAimClosestPart, function(v) cfg.silentAimClosestPart = v end)
+addDropdown("HitPart (16 Parts)", bodyPartsList, cfg.silentAimPart, function(v) cfg.silentAimPart = v end)
+addToggle("Enable Keybind", cfg.useKeybind, function(v) cfg.useKeybind = v end)
+addKeybind("Toggle Aim Key", cfg.silentAimKey, function(v) cfg.silentAimKey = v end)
+addKeybind("Hide/Show UI Key", cfg.uiToggleKey, function(v) cfg.uiToggleKey = v end)
+
+
+UIS.InputBegan:Connect(function(i, gpe)
+    if gpe then return end
+    
+    
+    if cfg.useKeybind and i.KeyCode == cfg.silentAimKey then
+        cfg.silentAim = not cfg.silentAim
+    end
+    
+    if i.KeyCode == cfg.uiToggleKey then
+        ScreenGui.Enabled = not ScreenGui.Enabled
+    end
+end)
+]]
+
+local silentScript = [[
+--[[ v1.0.0 https://wearedevs.net/obfuscator ]] return(function(...)local U={"\113\110\090\057\056\048\113\113\076\122\102\103\065\117\048\047\120\102\080\069\073\055\061\061","\068\066\056\107\083\051\122\115\056\119\070\061";"\119\102\118\109\116\076\061\061","\054\081\115\077\109\049\117\061","\081\076\098\116\048\052\114\078\099\070\053\107\100\086\083\097";"\103\074\047\043\115\088\118\065\088\048\097\077\075\117\115\066\106\054\043\070\112\120\103\113\090\083\085\088\051\055\061\061","\070\097\100\080\052\112\106\104\075\070\103\081","\114\101\110\083\056\056\076\061";"\083\075\050\113\084\119\114\066\102\050\100\048","\099\057\084\101\055\066\068\087\086\107\101\100\081\055\061\061";"\117\069\054\049\085\104\100\076";"\108\080\049\069\083\116\067\109\110\082\122\077\065\110\098\089\053\070\051\054\073\114\120\061";"\069\111\085\101";"\114\117\065\067\079\076\090\122\100\114\047\101\079\100\106\061";"\054\111\112\117\066\089\090\078\078\055\061\061";"\100\082\110\070\112\071\076\069\072\052\065\061","\122\104\074\097\074\047\081\065\072\097\086\100\085\109\111\073\116\110\089\108\081\105\061\061","\077\050\114\056\079\086\075\107","\066\043\109\086\053\117\099\057\113\082\049\065\077\055\061\061";"\084\076\061\061","\072\054\043\085","\120\043\115\101\111\098\068\122","\075\067\067\104\099\103\115\109","\107\114\054\097\090\105\061\061","\052\053\065\112\103\083\104\052\090\110\052\103\116\056\115\065\082\066\088\121\057\105\061\061";"\116\056\109\113\075\043\077\107\101\083\066\066\056\076\065\071\097\118\076\087\099\106\118\087\112\080\108\057\117\055\061\061","\053\088\120\068\113\052\122\113";"\098\098\098\114\055\075\104\118\105\105\061\061","\111\104\111\078\073\114\108\098\107\071\097\121\086\067\120\082\078\087\103\077\069\055\061\061","\116\083\122\104\066\120\120\051\112\077\109\048\081\071\061\061","\047\076\061\061","\119\065\101\116\111\071\061\061";"\069\117\097\116\090\049\101\069\069\112\102\061";"\101\051\097\075\089\068\057\079\047\071\061\061";"\048\105\117\075\070\081\108\050";"\073\071\061\061","\109\082\053\068\054\049\108\084\050\081\065\051\100\081\090\081";"\057\052\081\081\118\071\061\061","\077\087\051\075\107\071\120\118","\070\070\051\073\056\102\089\117","\118\120\113\113";"\069\067\082\061";"\122\085\047\049\071\079\076\043\069\055\061\061";"\074\054\121\053\086\120\076\082\057\107\068\089\107\120\066\104\072\116\099\099\066\065\079\061","\069\084\113\051\079\116\122\081";"\115\102\100\099\049\087\052\099\047\083\057\074\051\122\078\107\070\122\086\115\089\105\061\061";"\070\077\077\090\079\068\121\119","\117\121\115\052";"\111\076\088\101\081\065\071\090\089\043\114\090\117\050\108\077";"\111\083\097\097\068\105\061\061","\054\082\090\122\076\084\108\100";"\050\116\086\051\050\088\087\077\109\121\120\061","\121\121\114\085\049\104\081\087\109\055\061\061","\054\110\043\101\048\071\061\061";"\109\089\069\120\083\109\068\085\049\084\113\053\085\071\061\061","\047\085\098\047","\051\112\072\098\070\107\078\087","\070\057\083\097\075\083\084\107\082\112\090\109\078\114\054\113\111\053\089\088\122\048\065\071\075\113\082\054\067\071\061\061","\117\083\050\073\077\071\061\061","\074\114\051\078\073\121\050\083\119\089\103\048\055\055\061\061";"\076\051\056\067\049\055\061\061","\111\117\089\097\114\055\061\061";"\098\121\076\122","\047\109\119\107\120\055\061\061";"\121\120\086\106","\100\043\115\090\115\051\054\112\100\081\068\099\078\121\108\075\111\076\061\061";"\083\104\086\122\119\076\061\061";"\082\112\106\081\101\077\107\119\086\113\052\049","\083\088\119\104\081\117\082\074";"\072\086\117\054\077\055\061\061";"\074\121\081\112\104\048\099\106\105\115\108\052\065\105\117\086\074\119\049\085\112\071\061\061","\072\104\110\084";"\120\103\120\076\049\098\053\105\072\081\108\104\120\043\054\079";"\050\056\106\118\067\105\061\061","\065\117\067\050\122\112\068\070\072\107\107\054\111\106\076\103\049\076\061\061";"\097\116\054\105\085\055\061\061","\108\049\069\104\048\097\105\083\103\073\065\072\108\114\083\119","\115\088\087\108\050\103\053\113\089\076\061\061","\115\121\089\115\079\053\080\077\078\099\054\117\081\052\115\117\109\055\061\061";"\076\115\079\111","\105\076\061\061";"\117\121\110\065\080\055\061\061","\097\067\088\055\113\076\097\109\097\107\075\068\074\074\069\051\072\112\068\082","\118\076\070\070\077\089\098\078\105\106\110\061","\101\051\087\043\122\103\108\117\086\105\049\101\121\121\052\061","\090\043\122\113";"\115\103\054\102\105\103\108\077\109\116\115\101\089\098\106\061","\056\101\076\077\079\067\074\078\078\105\079\100\047\116\120\080";"\055\105\110\052\075\085\081\057\108\102\100\111\065\076\061\061";"\109\052\068\097\109\049\055\074\089\083\087\101\050\052\074\114","\103\115\104\056\086\109\120\105","\078\081\054\047\119\102\115\097\105\103\077\048\100\098\090\104\115\071\061\061";"\069\070\100\089\113\118\077\119\111\105\061\061","\109\104\105\104\049\088\070\102\109\049\114\115\078\084\072\122\048\105\061\061","\055\071\104\107","\117\122\100\066","\104\085\069\053";"\110\106\083\074\073\086\067\051\049\115\120\061","\075\115\098\082";"\048\055\061\061";"\110\087\118\072\066\113\048\120\109\047\117\061","\065\113\069\056\102\048\043\056";"\080\105\069\087\069\047\090\115","\100\083\072\082\089\083\072\084\089\098\068\052\119\098\068\102\049\103\119\061";"\066\053\043\072\080\055\061\061","\122\057\119\053\111\055\061\061","\067\079\077\068";"\043\078\052\101\071\105\121\098\101\069\071\066\110\066\067\097\075\099\077\097\067\100\114\050\049\066\083\080\074\072\120\114\113\054\118\111\069\054\049\051\116\109\105\043\097\122\078\098\103\074\098\075\057\089\078\048\078\100\055\070\050\089\109\104\050\111\043\072\052\111\110\068\105\115\048\079\072\065\117\068\057\051\067\090\099\055\052\083\081\075\104\099\115\075\055\043\102\089\104\052\078\102\065\074\111\067\057\116\054\078\049\115\090\050\101\050\102\089\043\107\073\109\099\099\048\099\118\108\052\103\111\118\116\105\049\108\104\103\111\118\097\107\071\121","\103\100\083\098\067\077\107\112\118\083\110\121\076\071\061\061","\101\102\114\071\114\104\113\057\054\080\097\068\098\071\061\061";"\119\054\116\118\081\114\086\065\087\100\057\070\069\105\100\103\067\067\102\047\089\053\086\120\105\114\086\057\083\055\061\061","\115\103\054\102\081\043\115\108\050\116\081\061","\077\104\112\065\074\079\048\077\056\076\061\061","\081\056\086\054";"\043\050\067\101","\071\099\119\121\057\075\082\043\049\048\111\105\049\110\111\057\082\111\116\068\074\100\083\121\106\107\052\061","\114\088\112\081\085\076\061\061","\114\055\061\061","\108\107\050\114\078\050\057\116\098\089\082\061","\115\099\053\105\106\055\088\075\081\108\054\050","\108\100\084\099\049\121\070\075\050\070\054\097\104\068\122\050","\079\118\110\099\071\119\109\067\084\055\104\120\120\121\070\087\121\084\070\061","\111\083\051\053\048\073\055\085\119\100\082\061";"\070\073\054\113\057\052\089\043\077\103\055\061";"\067\049\117\089\086\047\107\110\111\055\061\061","\074\067\097\088\098\106\109\057\122\090\081\080","\048\057\051\078";"\053\056\111\077\103\071\061\061","\078\106\105\052\101\067\049\100\073\108\110\106\076\090\067\112";"\120\065\043\086","\081\110\087\052\117\079\075\103\098\114\085\052\049\071\061\061","\120\100\055\099\105\066\109\117\050\098\051\114\077\068\043\100";"\056\106\106\106\043\081\078\118\070\105\061\061","\052\104\055\077\102\076\061\061","\109\098\074\087\053\090\115\114";"\118\074\043\101\069\098\116\108\083\066\081\083\105\073\108\069\081\122\113\051\073\105\061\061","\106\083\114\069\078\070\049\105\097\068\054\057\043\048\084\072\110\086\077\102\118\076\061\061","\073\075\089\043\111\076\077\109\088\108\110\076\081\097\103\122\083\114\069\078\083\055\061\061";"\049\090\072\056";"\050\103\080\077\050\071\061\061";"\071\114\043\066\082\101\097\110\086\098\067\072\097\055\061\061","\083\104\117\076\087\055\122\111\089\122\083\088\110\055\061\061","\080\119\121\090\052\072\078\050\075\122\057\073\098\075\076\052\122\066\049\119\110\113\085\057\102\106\121\116\079\105\061\061";"\073\105\061\061","\106\072\098\084\079\121\074\103\079\108\117\112\084\109\048\068\077\047\087\065\100\108\070\080\051\086\098\083\083\122\119\090\075\047\078\087\065\055\061\061";"\098\099\114\068\111\043\108\106\109\103\089\052\072\099\114\122","\110\088\120\043";"\086\087\089\077\067\076\061\061","\067\121\086\053\055\071\061\061","\087\115\075\112\053\102\074\086\107\071\084\067\089\057\087\082\116\076\061\061";"\110\084\107\068";"\098\077\056\078\079\066\103\057\098\071\061\061";"\117\112\122\074\115\117\122\071";"\043\098\111\117";"\114\121\097\114\085\102\075\078","\110\117\065\049\111\105\061\061","\052\086\066\105\065\052\055\053\121\105\061\061";"\089\103\054\102\089\103\054\113\050\055\061\061","\101\047\068\079\099\069\074\102\116\070\065\061";"\054\052\083\121\086\082\049\111\104\071\061\061","\069\119\120\115\077\107\081\072\076\071\099\067\077\057\071\088\103\104\074\082\078\090\110\061","\052\100\074\074\108\071\113\089\107\073\051\102";"\054\081\115\077\109\105\061\061","\050\112\098\116";"\109\097\084\108\069\055\061\061","\116\119\055\050","\089\087\110\072";"\118\043\108\068\099\079\084\056";"\100\099\108\113\050\053\089\108\089\082\068\076\072\081\104\075\054\051\081\061";"\115\106\085\102\069\085\118\115\104\070\105\061";"\115\070\068\097";"\112\079\052\112","\116\051\122\105\075\105\061\061";"\115\053\052\104\110\080\070\061";"\108\066\090\050\080\089\050\056","\100\066\089\120\089\120\051\065\069\071\061\061";"\073\109\078\079\089\100\097\057";"\104\086\102\089\121\088\107\068\083\079\082\061","\098\113\052\075\100\055\061\061","\085\071\079\097";"\075\089\084\077\098\107\048\116\114\076\061\061";"\114\067\090\116\069\113\077\088\068\076\061\061";"\081\043\115\057\120\071\061\061";"\052\105\103\117\057\105\061\061";"\048\082\082\056","\087\065\088\087\048\078\121\079";"\075\100\085\099","\100\112\112\090\118\055\061\061","\050\099\055\067\081\083\105\084\115\106\121\066\086\076\061\061";"\083\088\070\109\100\056\051\097\086\073\082\101";"\043\115\079\109\122\105\061\061";"\111\108\084\105\097\056\098\110\084\078\086\067","\120\071\102\068";"\097\115\057\088\102\088\099\100\118\101\082\061";"\115\088\088\081\088\115\118\107\070\055\061\061";"\078\098\077\047\078\118\069\043\073\083\116\121\110\071\061\061";"\098\119\119\088\088\105\068\053\105\117\117\122\070\072\107\048\108\079\069\067\106\071\061\061";"\110\097\084\103\068\065\114\112\077\078\054\070\117\071\061\061";"\047\117\106\082\047\119\077\119\057\102\090\079","\068\070\122\089\082\066\047\112\048\121\106\061";"\086\072\097\112\103\083\085\051\106\055\061\061","\053\109\106\061","\049\078\043\055";"\079\047\054\099\083\071\061\061","\110\099\113\071\086\113\050\082\116\068\049\087\112\101\070\061";"\067\073\100\076\086\072\079\098\121\050\105\097\055\078\048\075\054\082\122\109\112\087\119\061","\122\083\099\054\117\049\080\050\057\079\087\079","\086\053\102\073\088\071\061\061","\066\109\055\114\090\076\061\061","\079\081\086\068\050\104\115\072\100\102\104\047\111\043\053\070","\090\122\056\050\120\089\111\090";"\089\043\072\104\119\055\061\061","\057\117\080\104\116\103\101\082\079\043\119\061","\104\117\112\073\073\055\061\061";"\100\098\107\076\105\086\079\065\080\085\047\068\070\054\119\049\072\113\106\104\089\111\055\061","\088\108\110\057\051\078\081\068\048\108\052\051\050\109\108\066\050\112\069\057\106\071\061\061";"\054\088\050\053\089\098\068\087\109\121\089\057","\085\055\061\061","\098\116\115\097\050\104\105\076\105\051\050\103","\100\055\117\108\102\055\070\073\119\105\061\061","\097\122\106\068\077\119\088\043\077\105\082\050\105\055\061\061","\054\103\097\086\056\111\081\106\088\076\061\061";"\047\073\121\073";"\100\069\099\050";"\113\108\114\119\113\055\061\061";"\109\083\089\090\049\099\108\043\054\049\053\098\050\116\077\117","\121\121\066\073\081\071\061\061";"\121\102\122\117\088\098\079\051","\069\072\047\122\081\117\081\088\073\083\079\061","\111\083\118\110","\076\111\105\109","\089\101\052\099\105\071\061\061";"\100\081\086\118\049\049\115\114\111\043\108\100\081\098\074\052","\068\068\048\118\056\117\114\110\087\076\061\061";"\070\077\074\119";"\072\049\086\066\090\079\120\082\114\071\061\061";"\119\122\053\102\089\105\061\061";"\107\053\087\114\119\118\076\114";"\054\051\068\074\109\084\043\073\119\070\055\061";"\051\054\056\057\122\068\116\118\113\052\070\061","\070\081\099\100\086\070\107\072\113\057\081\061","\100\082\054\077\049\081\090\085\115\121\080\057\050\081\080\085";"\116\071\077\070\054\055\061\061","\079\067\098\119\055\105\061\061","\090\081\074\103";"\105\103\050\110\082\105\061\061","\067\049\071\057\083\116\048\111\078\071\061\061","\109\052\101\111\084\078\072\056\074\105\081\061","\053\104\101\098";"\081\056\087\112\083\055\061\061","\118\043\066\080\067\100\110\043\120\106\048\054\070\050\082\061","\088\099\056\049\108\076\061\061";"\087\108\053\077\069\079\049\120\103\084\051\101";"\082\083\084\048\110\069\116\109\119\119\109\076\090\076\061\061";"\115\102\082\043\065\090\106\068";"\054\110\090\077\055\121\085\069\072\111\082\061","\050\043\072\090\119\103\108\110\081\102\115\118\120\054\108\067\111\051\079\061","\111\120\120\122\085\047\054\107\115\106\077\107\066\069\105\079\087\051\110\089","\081\116\074\108\078\105\061\061";"\120\116\079\115\099\054\080\101\066\055\061\061";"\056\043\112\053\054\071\061\061";"\053\071\118\119\109\048\084\100\115\054\074\103\119\069\079\086\070\068\079\105";"\080\105\113\105\087\099\088\116","\109\107\086\043\054\105\061\061";"\109\099\082\061";"\114\048\049\118";"\050\098\068\076\119\098\072\085";"\079\119\049\102";"\098\049\071\104\109\121\102\102\049\052\074\098\089\081\077\087\081\071\061\061";"\065\112\074\078\121\066\082\122\089\051\055\076\070\055\061\061";"\054\078\075\113\106\070\054\114\072\099\067\101\105\055\089\084\111\098\051\071\117\071\086\114";"\099\108\048\122\081\112\087\109\109\051\079\061";"\120\088\087\077\109\122\105\061";"\108\068\075\100\047\055\061\061","\100\051\053\103\088\108\067\068\074\087\100\109\084\047\055\070\074\098\054\101\090\105\061\061","\120\102\079\101\115\083\072\051\078\083\115\117\100\049\087\074\120\053\079\061","\097\078\090\079\090\074\048\071\110\055\061\061";"\081\121\080\068\119\103\080\051\050\071\061\061";"\050\116\054\089\050\054\077\101\100\121\102\101\054\084\117\106\100\081\079\061","\102\082\101\122\076\073\102\088\048\113\113\106\103\055\100\043\087\084\056\075\098\055\061\061","\099\111\090\107\086\068\048\047\075\074\086\054\073\105\061\061";"\082\083\107\097";"\090\104\068\116\077\119\051\085\103\099\102\061","\104\076\073\118\101\076\061\061";"\054\082\109\117\114\098\080\065\052\117\071\105\050\105\061\061";"\079\118\051\066";"\076\113\080\098\071\114\101\104\101\085\101\081\049\090\056\101\116\076\107\066","\052\116\080\120\109\120\075\085";"\069\053\119\121\051\076\108\109\048\102\111\057","\108\066\083\113\121\103\084\098\089\050\113\074\085\079\102\049\088\104\083\110\057\105\061\061","\073\115\089\072\085\115\115\109\070\108\120\061","\053\117\077\105\114\119\065\061","\066\111\081\100\071\071\061\061";"\098\049\071\101\079\099\087\122\089\082\077\080\054\082\086\057\049\071\061\061";"\115\098\068\104\109\105\061\061","\075\118\053\086\117\071\073\107\112\105\087\075\073\073\057\115\101\119\071\043";"\050\053\087\081\109\052\090\084\072\102\077\090\119\081\070\106","\115\047\120\043\068\077\097\084";"\121\099\072\076\049\104\043\067\079\055\061\061","\043\082\102\057\072\047\098\109","\082\066\043\102";"\110\119\122\069\120\050\051\119\072\085\088\076","\051\071\061\061","\082\047\085\079\084\043\081\049","\048\076\076\067\074\071\061\061","\057\113\110\108\074\071\061\061";"\066\051\057\119\109\055\108\108\065\049\075\114";"\052\057\055\080\050\100\110\051\088\071\061\061";"\065\117\097\047\052\090\098\072\043\076\061\061","\086\109\073\055","\114\077\087\087\122\066\114\074\052\097\052\070\112\086\083\083";"\048\081\089\066\054\084\089\074\072\051\050\052\049\082\074\054","\103\057\087\056\107\117\119\080\087\057\076\061";"\108\066\056\043\098\077\111\102\090\054\116\116","\049\122\056\111\074\049\103\052\049\051\105\078\073\105\061\061";"\105\069\082\051\097\071\061\061";"\067\070\089\117\113\049\118\088\052\089\113\084";"\117\047\055\104","\087\118\100\083\099\071\061\061";"\056\097\081\054","\115\088\089\043\049\054\077\108\115\121\053\103\049\053\119\061","\098\080\077\070\049\049\050\057\078\116\053\087\098\099\071\068","\109\048\065\068\055\055\061\061","\074\089\073\097\117\083\043\110\119\074\119\114\115\076\061\061","\050\081\111\043\066\102\084\120\116\055\061\061";"\080\076\076\088\100\089\098\086\074\117\107\086\054\049\110\087\043\118\050\110","\111\069\110\097\083\106\051\120\077\098\075\122\090\075\081\081\084\108\112\113\077\079\088\069\052\122\082\061";"\073\071\087\110\076\066\065\116\122\050\069\051\112\076\061\061","\087\105\048\102\080\066\085\106\065\069\106\079\099\087\097\106\099\068\120\061","\105\043\087\053\119\083\115\053","\103\069\070\120\117\105\061\061","\115\087\097\047\090\111\068\057\114\057\085\078\083\076\105\061";"\119\043\072\110\049\084\080\077\054\103\050\116\120\121\108\080\072\055\061\061","\117\070\118\111\072\080\073\113\099\103\116\089\079\111\119\113\081\106\054\081\084\105\061\061";"\089\051\080\118\120\088\077\118\098\053\054\117\054\103\068\102\111\071\061\061","\089\072\110\084\097\055\061\061";"\081\049\118\087\077\101\050\101","\068\078\114\072\087\106\079\111\073\102\105\061";"\109\082\077\076\109\121\068\087\109\084\089\085\079\098\087\048\111\083\105\061","\116\082\119\117\109\050\077\047\073\097\070\105\049\074\068\107\054\056\077\109\117\107\043\066\101\107\107\079\076\105\061\061";"\081\119\121\077\112\097\089\047\047\047\119\090\081\070\107\106\083\086\056\066\073\071\061\061","\051\074\101\090\107\111\117\098\088\070\122\089","\050\116\086\113\050\098\104\075\089\083\117\061";"\080\086\099\054","\075\109\068\067\108\048\109\105\109\120\106\061","\054\072\097\069\065\088\055\061";"\101\117\099\070\079\105\061\061";"\071\076\050\116\118\055\061\061","\101\047\070\073\090\097\099\067\089\082\082\107\108\112\070\070\072\120\047\047\049\057\079\061","\102\106\097\114\118\076\061\061","\122\087\109\098\068\071\061\061","\106\105\061\061","\083\104\086\077\109\121\115\053\078\071\061\061","\066\101\105\055\080\120\049\076\056\082\071\061","\048\112\065\083\074\108\055\109\057\050\120\109\049\070\111\053\105\071\061\061","\079\080\114\121\081\055\061\061";"\100\083\072\114";"\086\117\066\050\118\071\061\061","\106\052\053\079\118\103\082\055\076\112\111\048\089\117\111\065\087\057\082\117\084\055\061\061";"\098\115\057\052\117\106\078\117\082\105\061\061";"\118\072\084\074\097\108\071\074","\121\104\051\098\054\082\085\066\068\105\061\061","\111\102\087\081\109\051\080\067\120\103\089\047\105\051\114\081\119\076\061\061","\087\069\050\077";"\119\111\078\090\083\105\061\061";"\105\102\089\101\119\098\104\053","\089\099\079\043\050\088\053\052\079\104\115\108\109\054\082\051\081\105\061\061","\048\102\099\117\102\109\113\084\087\055\061\061","\054\065\056\120","\043\087\067\077\072\121\086\087\073\083\101\073\081\083\079\086\074\057\065\061","\098\071\047\114\097\098\052\085\074\102\055\087\101\121\078\050\054\076\061\061";"\065\107\088\121","\066\116\056\109\089\115\076\078\086\106\055\055\107\072\050\072\107\071\118\110";"\115\116\054\051\050\088\087\057\078\105\061\061";"\119\113\075\050\080\069\084\088\072\117\053\080\057\116\074\118\054\085\078\050";"\105\104\087\111\105\098\108\053\079\081\115\106\050\083\077\101";"\052\071\115\086\085\081\076\097\100\077\076\047\070\105\061\061";"\056\119\084\049\117\073\067\055\103\085\070\061","\090\048\099\085\066\055\061\061","\050\104\110\101\099\071\061\061";"\110\069\084\065\087\076\061\061","\072\051\072\102\089\054\082\043\105\098\053\115\105\081\054\103\098\116\070\061","\100\098\068\051\050\116\080\113\119\103\081\061","\108\083\107\080","\108\086\067\053\056\117\108\071";"\049\054\047\078\067\113\082\082\056\090\086\082\057\119\087\082\098\081\113\050\106\109\065\061","\077\102\117\057\080\057\106\076\073\105\061\061","\114\115\053\108\086\071\061\061","\077\085\056\077\119\113\070\110\102\067\074\082","\074\051\043\071\111\116\089\085","\065\104\107\048\122\085\082\069\065\055\061\061","\097\054\098\065\116\068\069\112\065\112\066\103\080\104\100\083\108\116\081\087";"\111\103\089\118\089\099\108\072\115\081\068\108\105\051\115\089\050\055\061\061","\120\113\108\116";"\050\075\047\051\047\087\117\074","\112\086\116\109\078\071\061\061","\080\113\097\102\055\055\061\061";"\117\050\090\048\114\114\073\085\120\090\081\061","\069\097\085\087\102\100\099\083\103\074\070\061";"\073\074\107\112","\103\052\117\051\121\082\081\111\071\076\061\061";"\084\082\054\099\106\074\109\048\067\085\049\122\106\054\051\076\080\119\066\054\076\071\061\061","\070\057\110\051\065\076\061\061";"\057\076\121\072\101\078\077\098\054\074\122\106\115\080\108\052\081\072\121\104\108\100\119\061","\116\078\048\057\119\071\061\061","\104\117\073\049\056\071\061\061","\118\102\086\084\075\103\075\098\048\098\054\071\070\079\055\119","\089\051\089\070\072\082\074\081\081\043\072\076\120\104\050\117\098\121\055\061","\122\088\103\050\054\069\099\108\102\065\055\061","\116\074\119\051\089\053\108\057\085\071\061\061","\116\070\115\077\103\074\071\061";"\054\116\049\053\071\115\114\047\066\108\068\106\117\076\098\081\102\116\077\043";"\119\103\108\053\119\103\090\084\119\098\074\110\089\083\117\061";"\104\048\121\088\056\072\122\072\083\043\051\081\049\071\061\061";"\051\107\105\074\057\043\113\120\122\071\061\061","\073\049\100\107\068\076\098\076\050\118\070\061","\071\112\067\050\117\112\111\048","\117\070\049\043\050\071\061\061";"\078\050\070\085\107\071\061\061";"\109\103\115\047\119\084\080\066\115\116\074\070\049\122\077\099\089\084\079\061";"\120\103\054\102\109\098\054\102\119\083\115\108\119\121\074\053";"\054\121\054\084\050\116\086\101\079\055\061\061","\080\081\112\121\104\055\061\061","\082\049\051\100\051\121\116\052\065\066\050\122\103\121\089\102\111\081\053\048\080\066\043\109","\120\116\072\108\109\116\076\061";"\097\084\086\066\122\078\104\079";"\100\088\115\102\120\082\050\053\050\071\061\061";"\100\122\068\081\112\085\099\068\079\102\053\116\079\087\070\050\103\051\114\073\105\100\065\061";"\050\056\087\077";"\115\072\079\049","\112\116\054\108\099\104\089\047\098\106\055\061";"\109\086\053\103\102\087\097\090";"\082\103\117\100\043\085\117\083\080\121\085\049\102\108\109\086\104\078\076\074\073\084\048\051\103\114\079\061";"\117\100\099\066\085\083\098\112\051\047\057\043\119\076\061\061";"\106\090\111\104\069\075\085\057\047\117\110\061";"\116\054\120\043";"\109\057\088\113\070\107\068\100\068\043\081\061","\090\073\049\080","\116\065\100\057\053\055\061\061","\113\090\098\112\073\082\101\104\069\071\121\115\104\078\043\048\101\118\082\120\043\076\061\061";"\105\102\090\070\048\116\090\114\098\081\090\053\111\054\108\110\054\099\082\061","\100\055\115\114\051\050\099\079\048\106\085\082\067\077\086\089\073\105\079\074\088\067\079\061";"\107\053\072\083\068\115\118\086\117\082\103\086\082\082\071\061","\050\080\101\100\111\071\061\061";"\099\068\103\069\111\113\115\109\111\086\119\061";"\079\080\089\089\111\116\052\101\072\051\080\085\072\099\115\102\105\104\120\061";"\072\085\108\110\069\110\080\065\073\090\106\061","\100\113\071\109","\047\116\114\101","\074\112\056\070","\100\075\115\084","\103\049\069\084\051\076\061\061";"\120\097\111\101\113\072\083\120\102\097\074\051\090\118\088\101\043\120\117\100\109\055\061\061","\121\050\110\112","\087\055\120\077\104\076\061\061","\113\104\118\050\118\111\107\043\071\083\082\054\112\076\061\061";"\072\076\061\061","\107\078\073\069\073\076\061\061";"\103\049\087\081\090\055\061\061","\084\069\110\072\086\114\049\080\111\080\113\100\077\076\061\061","\079\079\087\111\082\100\101\053\102\069\097\099\110\071\061\061";"\072\072\121\073\066\055\061\061","\069\055\061\061";"\099\049\057\050\084\052\097\097","\099\112\077\115\068\055\061\061";"\074\114\089\113\107\120\111\101\084\082\119\087\049\082\113\043\082\119\103\113\101\052\107\043\071\083\073\087\098\076\061\061";"\115\103\054\102\049\098\086\104\120\103\081\061","\053\090\077\070\049\077\049\097\114\085\048\053\119\089\104\120\082\049\106\070\090\065\049\119\099\086\100\111\077\081\099\097\113\102\065\057\069\086\109\071\079\081\112\053\122\103\050\084\121\083\074\120\113\066\050\067\053\106\080\087\074\100\086\050\086\054\107\067\102\097\104\099\097\073\113\098\069\103\066\080\116\070\070\075\097\055\053\120\077\114\088\057\047\077\109\053\043\080\090\118\043\111\087\113\103\098\122\101\099\114\069\081\105\112\050\087\088\049\104\078\106\114\118\082\112\047\079\097\078\047\053\057\088\070\071\104\090\089\116\122\048\085\065\061","\090\089\116\110";"\098\048\047\116\084\072\077\065\072\087\098\089\057\057\075\122","\081\051\050\043\054\121\077\076\054\103\104\088\050\054\089\074";"\105\103\086\110\109\043\117\051","\105\083\055\068\089\052\054\084\089\098\120\101\100\049\053\101\089\076\061\061","\047\101\116\077\074\099\065\050\086\067\048\043\111\047\087\056\053\109\119\104";"\078\088\106\053";"\102\099\120\084\105\090\076\054","\053\043\105\120","\122\099\117\073\055\089\050\049","\073\076\061\061","\108\049\117\077\109\076\072\047\071\113\101\049\117\056\112\085\071\116\047\049\055\076\043\079\047\089\069\052\107\090\119\105\070\073\098\121\102\055\061\061";"\100\104\089\097\049\080\050\074\050\121\089\114\049\083\115\111","\057\107\066\070\053\112\116\103\056\071\061\061","\089\101\054\067\068\071\061\061","\066\098\080\104\043\118\071\079\108\065\079\109","\068\101\075\071\056\097\078\113\074\055\061\061";"\075\067\080\111\055\097\089\107\047\081\106\100\113\076\061\061","\115\070\047\052\088\090\077\053\055\054\122\111\043\055\061\061";"\089\104\079\073\082\111\075\116","\078\048\048\106\077\105\061\061";"\110\076\061\061","\114\113\085\070","\053\106\103\119\086\121\090\088\077\076\116\048";"\107\085\106\122","\118\107\068\057\107\057\119\061","\071\111\110\117";"\105\087\077\069\115\055\061\061","\081\102\054\116\054\103\080\080\049\082\054\067\048\088\080\101";"\048\054\108\116\111\053\054\122\078\052\086\116\072\049\072\076\109\103\076\061","\099\087\073\048\072\066\053\078\043\055\061\061","\050\065\100\057\116\068\099\066\068\071\115\043\115\066\097\115\122\101\105\106\108\090\050\086\080\076\061\061";"\049\098\087\082\100\082\090\122\048\099\050\053\111\102\074\047","\104\107\088\122";"\104\111\085\105";"\104\082\110\088\114\080\079\110\110\068\120\061";"\066\055\061\061";"\118\076\061\061";"\097\075\104\050\065\121\106\103";"\109\053\090\112\086\076\061\061","\074\115\103\074\122\101\068\102\071\099\082\074\043\089\070\113\086\082\086\071\083\105\061\061";"\116\097\087\108\104\074\120\085\054\043\076\061","\067\110\082\114\072\086\085\122\117\105\061\061";"\054\121\054\084\050\116\086\101\079\076\061\061";"\080\098\116\120";"\089\050\107\069\081\057\116\119\078\085\066\047","\067\121\050\083\067\107\067\104\083\088\081\061","\110\117\097\069\107\043\048\118\055\055\061\061";"\120\115\048\121\073\067\120\088\111\055\109\087\104\081\051\083\072\066\086\049\049\071\061\061","\083\106\102\105\121\119\072\067","\111\067\097\113\102\122\109\065\073\076\061\061";"\066\084\116\090","\052\076\061\061","\109\103\087\083\120\082\117\104\079\083\052\106\119\104\115\084\109\055\061\061","\087\117\090\071\068\055\061\061";"\089\116\054\110\119\083\052\061";"\050\082\052\057\073\074\065\053\118\073\114\071","\043\048\065\119\106\055\061\061";"\101\113\054\122\113\074\075\068\117\052\077\047","\112\047\112\070\076\050\065\052","\070\081\122\082\108\122\109\108\103\097\069\114\068\082\083\118\055\056\109\098\087\071\061\061","\118\081\082\054\120\108\120\100\100\054\068\121\120\109\056\057\083\097\085\067","\111\081\108\070\048\054\050\105\072\102\050\118\109\052\104\072\079\054\119\061";"\077\074\119\111\110\048\083\048\075\105\098\118","\087\073\101\074\070\072\065\087\109\051\101\081\085\055\061\061","\122\066\104\106\074\102\113\114\087\076\061\061","\099\076\099\050\101\105\100\073\070\105\061\061","\077\056\067\108\114\115\076\111\102\055\061\061","\066\118\083\119\079\117\065\110\076\056\098\048\080\089\118\074\099\085\079\073\103\055\061\061";"\086\112\104\098\104\055\061\061","\118\104\074\054\110\098\117\100\104\109\102\061";"\122\066\116\057\049\117\066\107\075\105\061\061";"\056\074\072\106\075\106\050\120\087\109\121\079\073\111\122\117\078\117\108\066","\119\103\108\108\120\055\061\061","\116\108\067\113\121\053\047\067\069\050\081\061","\102\076\086\089","\067\100\118\115","\113\047\066\085\110\043\104\049\100\055\061\061";"\100\069\068\112\113\099\048\056\071\075\105\061","\079\102\122\056";"\079\112\100\115\102\097\120\070\114\122\114\071\122\049\074\106";"\110\048\104\043\071\086\090\097\104\110\105\061","\108\052\104\101\052\088\051\053\111\098\097\049\066\043\070\082\051\116\106\107\106\076\061\061","\054\082\118\043\115\122\104\109\069\071\043\073\069\085\078\118\108\111\080\054\051\072\081\087\050\101\070\061","\106\107\052\071","\074\068\107\050\069\097\118\083\072\086\075\050\052\117\048\076\052\084\071\061","\069\087\116\122\108\100\122\120\051\105\061\061";"\067\083\049\055";"\107\069\107\066";"\105\052\054\083\079\103\065\068\098\122\114\043\119\051\080\077\120\055\061\061";"\050\103\086\101\111\043\072\076\119\098\072\053","\089\103\054\102\109\121\080\090\089\098\072\108\109\116\074\090\089\083\115\070\109\103\105\061";"\084\057\055\080\109\055\072\107\069\084\076\061","\082\073\066\118\112\082\121\098\043\055\052\061";"\084\115\121\087\101\069\055\105\087\071\061\061","\109\072\070\089\043\090\102\118","\120\052\090\087\078\088\052\101\115\081\054\081\079\043\089\052\049\121\120\061","\100\087\107\081\074\083\052\061";"\051\119\050\086";"\106\097\075\073\076\049\108\112\051\051\097\105\103\054\097\065","\074\114\101\110";"\084\079\117\075\066\109\069\043\117\088\080\090\116\076\061\061","\106\050\055\055\077\115\102\098\118\089\120\061";"\065\055\048\080\109\119\104\054\118\076\061\061","\097\116\085\098\043\090\113\053\067\049\067\102\068\055\086\099\077\104\109\114\051\047\065\061";"\110\109\116\055\056\105\061\061","\048\075\055\053\089\118\070\077\048\055\061\061";"\056\066\103\071\114\122\051\070\083\109\082\068\121\076\061\061","\048\067\109\115\104\084\053\053\100\101\071\109\070\116\079\105";"\109\121\054\043\119\103\072\110\109\043\072\104\120\121\081\061";"\114\076\119\090";"\078\081\108\051\089\098\052\101\048\080\077\113\111\051\089\099\079\055\061\061";"\086\085\089\077\080\068\053\109\104\104\115\115\116\076\085\075\114\077\065\072\090\073\105\061";"\050\116\080\075\109\116\081\061","\050\076\114\055\101\097\112\068\057\115\114\067\116\109\071\079";"\071\103\084\082","\089\073\043\066\075\119\100\075\108\107\110\061","\055\075\088\120\072\076\061\061","\089\104\066\116\112\055\089\047\106\066\068\116\078\076\061\061","\050\054\087\068\105\112\090\118","\089\087\085\080\097\050\056\116\119\083\079\121\116\083\070\061","\082\111\097\069\065\111\100\077\083\079\118\080","\047\108\111\048","\114\098\119\048\112\105\061\061","\113\065\088\073\083\105\061\061","\079\079\071\111\102\116\117\087\054\056\104\049\106\083\073\079\116\109\106\084\073\076\061\061";"\048\084\069\049\101\071\061\061";"\076\085\048\110","\115\103\054\102\081\116\074\108\078\098\054\101\120\076\061\061","\108\071\061\061";"\109\072\050\104","\069\071\110\086","\075\052\104\116\087\083\118\056";"\077\105\086\120\106\103\066\053\106\078\103\116\089\057\114\081";"\051\107\088\099","\088\073\101\114\071\121\076\111","\071\084\088\101";"\077\057\102\077\090\043\051\081";"\086\109\087\052";"\099\098\103\049\049\067\085\075";"\054\050\103\099\076\087\114\047\066\103\116\103";"\089\102\090\116\072\103\090\043\054\080\114\072\048\081\090\117\100\105\061\061","\053\111\049\117\043\053\048\087\055\117\071\061","\105\102\053\054\054\099\052\103\054\043\077\101\072\116\077\075";"\119\081\116\085\099\101\121\082\084\076\061\061";"\084\051\070\043";"\110\072\089\097","\048\111\056\090\053\090\108\048\081\115\083\104\118\108\070\066\069\080\055\122\056\080\043\105\085\105\115\048\089\049\112\084\083\066\073\051\116\121\107\111\101\085\099\118\085\122\117\061";"\115\081\105\086\065\114\043\072\051\076\061\061","\115\085\086\100","\119\098\080\120\097\048\101\119\068\066\120\061","\112\108\117\073\120\055\061\061";"\047\079\107\114";"\111\083\114\108\111\083\087\051","\068\057\097\073\069\107\116\106\105\075\120\071\054\083\103\074\065\109\105\050\108\071\061\061","\052\102\104\069\115\071\061\061";"\065\085\110\112\090\048\117\043\103\101\119\083\111\118\097\118","\115\103\054\102\081\103\054\101\050\121\053\084\089\105\061\061";"\056\114\079\084\105\051\077\122\065\084\107\068\097\122\080\072\088\106\070\076\122\076\061\061";"\055\067\103\098\122\087\050\066","\120\082\070\070\083\076\061\061";"\089\084\067\105\099\049\057\089","\066\118\109\108\098\105\061\061";"\109\083\055\074\111\103\068\090\098\116\068\116\109\080\071\068\081\071\061\061","\109\080\120\101\048\054\081\074\105\043\070\068\089\121\050\080\119\098\081\061";"\110\098\112\048\114\112\056\053\103\052\065\117\088\076\061\061";"\119\084\054\086\082\106\099\052\075\121\120\101\075\055\061\061";"\051\043\102\120\089\110\122\109\079\053\048\066\087\077\079\087\085\048\103\077\057\105\061\061";"\068\077\108\119\090\107\068\068\074\076\078\115";"\050\051\052\082\114\083\108\089\102\079\117\080\076\055\048\102","\097\069\048\105\118\071\061\061";"\111\115\054\067\050\049\099\087\118\071\061\061";"\072\097\108\117\075\080\073\119\080\105\069\118\118\109\082\061";"\117\111\048\050\108\079\119\111";"\102\052\111\068\072\104\099\119\100\089\067\085\076\055\061\061","\049\048\090\102\101\108\106\054\080\077\118\116\078\104\090\085\101\115\068\083";"\079\043\081\103\050\098\086\121\054\053\055\061";"\083\114\101\115\074\077\117\067\108\119\099\047\112\098\055\081\109\106\071\061","\109\099\117\061";"\100\071\061\061","\097\104\108\052\066\078\054\049\105\081\053\106\054\121\070\055";"\113\105\074\122";"\052\072\065\050\085\115\081\086";"\105\081\119\069\074\098\106\050\110\079\109\053\054\076\061\061","\086\115\103\087\119\103\110\112\077\051\119\061","\066\082\116\121\112\054\053\070";"\120\116\080\077\120\122\079\061","\050\119\052\082\078\101\102\043\054\087\119\087\081\047\120\102\121\073\110\117\118\116\052\061","\122\071\102\079";"\067\051\049\121";"\104\077\069\071\097\084\112\049\122\081\065\049\050\105\061\061";"\086\117\107\083\089\053\075\053\104\047\117\061","\113\117\109\104\074\083\099\118\102\102\103\104\075\083\066\070","\098\085\050\090\110\110\057\097\070\085\121\047\109\109\100\049\089\112\075\081","\056\081\085\120\122\101\074\068\085\104\103\068\081\053\119\061";"\082\111\102\054\075\076\061\061";"\081\053\099\084\097\107\070\080\047\101\056\048\111\100\052\088\068\043\116\055\102\117\117\061","\086\108\054\049\099\049\066\117\100\084\078\083\082\112\082\047";"\087\086\088\047\100\074\077\067\082\055\061\061";"\088\108\105\070\069\117\050\074\090\110\103\056\101\066\112\116","\117\108\100\112\084\118\106\070\048\050\117\069\054\054\089\076","\077\119\070\053\088\054\049\076";"\079\113\085\089";"\108\079\050\068\067\079\114\087","\067\085\112\054\086\077\088\110\083\055\061\061","\056\089\074\068\082\103\055\047\086\043\110\097\071\074\102\061","\104\083\080\100\081\049\106\072\043\076\061\061";"\109\099\107\055","\104\120\085\073\079\119\055\061";"\065\053\075\115","\110\101\112\079\080\054\079\100\087\055\106\061","\111\114\076\049\078\088\112\109","\087\068\066\118\088\051\065\098\043\080\049\088\053\111\072\056","\056\088\090\066\116\081\118\087\050\052\120\061","\076\105\109\057\107\119\051\076";"\089\102\080\049\098\098\050\099\115\122\108\103\072\049\081\101\072\081\106\061","\050\121\104\081\115\081\090\048\054\052\104\053\048\081\074\043\089\055\061\061";"\089\082\086\112\115\049\087\117\078\049\114\098\105\121\053\083\072\105\061\061";"\049\072\074\099\097\120\048\121\055\080\119\055\089\053\105\070","\054\116\080\090\120\116\054\101\117\082\115\053\050\116\054\084\050\116\054\052\117\105\061\061";"\108\112\120\067\081\102\089\071\075\071\061\061";"\116\119\120\069\101\114\106\047\103\067\108\098\097\087\071\073\074\114\056\049\105\087\075\079","\117\110\121\098","\084\078\117\086\051\087\120\079\090\055\061\061";"\105\113\120\061","\066\057\115\055\121\111\119\057\080\055\061\061","\050\083\115\089\119\053\087\081\049\082\115\108\072\088\114\079\100\076\061\061";"\108\078\116\103\043\076\118\048\079\105\061\061";"\076\078\083\084";"\106\079\110\122\088\115\103\077\118\079\076\061";"\113\075\102\072\057\073\110\057\068\090\071\061","\075\118\048\053","\100\086\113\065\100\079\104\108\104\076\061\061","\115\049\083\048\118\100\052\069\089\051\050\100";"\112\056\053\053\114\105\061\061","\089\103\104\108\050\116\072\070";"\085\120\081\088\105\120\103\089\099\054\087\072\122\117\065\115\103\114\087\121\113\052\073\048\080\052\050\106\113\105\061\061","\078\106\072\081\084\065\100\055","\099\076\061\061";"\115\068\120\084\121\105\065\067\072\055\061\061";"\079\054\047\086\089\122\104\085";"\090\071\061\061","\112\101\078\113\111\043\048\069\068\047\075\119\069\102\054\082";"\072\120\110\107\109\055\077\048";"\089\102\054\118\115\103\054\070\050\104\089\054\050\103\086\076\115\088\081\061","\112\086\122\120\098\079\110\098\112\043\079\061";"\090\100\117\065\087\084\118\103";"\075\098\110\089","\083\110\116\072\048\115\065\047\073\088\109\072\073\121\088\110\073\105\061\061","\071\102\098\113\109\118\048\069\054\115\100\075\112\071\061\061","\121\088\057\109\075\055\061\061","\077\114\047\118","\053\116\102\056\106\057\103\101";"\117\122\053\052\099\053\118\043\082\112\120\061","\115\080\051\067\074\120\054\120","\111\052\068\074\054\083\108\122\079\049\105\051\105\102\072\053\072\105\061\061","\105\121\090\119\072\102\089\083\078\052\072\098\120\098\077\101\115\055\061\061","\100\056\088\069\054\090\053\089\111\077\107\087\117\075\065\101\088\072\082\047";"\120\103\054\102\120\121\054\108\089\116\086\113\109\088\052\061";"\056\068\112\072\120\102\086\047\108\104\112\102\076\049\070\061","\086\119\075\048\080\051\109\106\121\051\113\053\050\115\049\112\067\100\069\115\050\122\105\075\118\109\110\061";"\109\098\080\102\111\071\061\061";"\048\080\114\114\089\082\052\101\105\122\087\105\049\098\080\066\111\081\055\061","\101\109\086\067\054\121\081\104\069\103\052\051\119\109\102\098\115\055\075\117\120\072\052\061";"\086\104\108\057\056\115\117\086\069\053\082\057\071\055\061\061";"\089\103\054\102\120\121\080\043\109\098\054\102\119\083\115\108\119\121\074\053";"\048\070\117\097\082\071\061\061";"\087\090\069\088\111\074\076\104\049\122\121\115\104\067\082\051";"\112\082\066\052";"\071\074\067\065\114\085\105\065\076\117\103\119\117\071\061\061","\087\083\120\056";"\098\115\100\047\077\052\121\066\122\090\070\061","\111\070\089\054\098\086\087\050\071\102\097\113\087\086\081\080\053\076\061\061";"\097\109\074\109\048\055\061\061";"\113\074\076\119\100\118\055\079\081\109\075\118\114\098\079\122\089\079\048\097\098\048\105\061","\086\098\050\073","\051\081\114\067\110\069\054\048","\089\109\049\071\085\088\072\104\115\055\061\061";"\083\097\105\065\108\084\119\052";"\120\121\080\113\089\116\086\090";"\102\050\055\066","\069\086\050\118\089\055\061\061";"\099\073\082\050\081\111\087\104\048\105\061\061","\072\077\121\055\079\097\099\097\070\105\101\109\072\056\108\066\089\115\104\084\098\105\061\061";"\048\111\104\105\048\105\111\076\110\069\049\080\118\088\078\121\054\078\115\122","\121\103\099\085\043\105\061\061","\066\097\054\102\101\071\061\061","\050\067\047\099\073\120\051\105\054\099\105\061";"\065\050\114\112\101\088\090\050\069\110\079\050","\056\056\116\116\104\119\086\088\112\090\120\090\053\065\056\085\078\086\081\056\043\076\061\061";"\098\082\065\043\113\078\065\065\043\105\061\061";"\054\074\049\043";"\103\075\069\066\080\109\110\073\067\081\119\054\085\120\057\110\099\106\100\090\073\076\061\061";"\111\057\107\054\090\119\052\081\116\071\061\061","\118\103\101\055";"\112\099\110\082\112\114\053\115\074\071\061\061";"\109\116\054\113";"\088\068\089\089\112\049\099\043\103\121\105\061","\079\089\098\052\109\070\115\099\121\108\086\055\051\072\105\116\086\055\079\070";"\054\080\108\106\050\043\114\070\109\099\114\116\111\098\053\097\111\081\055\061";"\118\071\070\078\090\043\122\083\115\071\061\061";"\077\043\114\085\050\073\086\085\106\065\089\082\090\103\051\117\083\076\072\088\116\099\069\054\081\111\051\081\080\071\061\061","\088\101\048\078";"\097\106\084\119\074\119\106\101\081\071\061\061","\113\081\073\089";"\083\110\105\085\087\050\071\104\119\083\082\061";"\065\101\054\087\051\122\049\112\104\076\084\112\087\076\061\061";"\113\069\077\113\077\055\061\061","\079\116\108\051\099\076\061\061";"\066\097\106\081\086\105\061\061","\070\057\084\069\079\084\116\112\119\113\101\070\075\071\061\061","\077\056\051\073\101\071\061\061","\049\051\108\098\105\102\079\076\049\082\080\080\100\081\072\121\081\105\061\061";"\120\082\087\116\081\043\089\049\115\080\080\104\081\116\090\075\078\121\052\061","\111\098\110\102\115\084\115\105\078\081\053\054\111\053\050\082","\105\103\120\061","\107\051\056\102\086\114\050\054","\068\115\118\103\051\103\086\073\076\054\079\061","\076\089\090\051\122\070\084\049\115\076\061\061";"\072\055\066\056\101\055\053\107";"\085\043\072\083\084\055\050\086\120\100\089\066","\090\106\120\116\086\071\061\061";"\076\088\081\101\077\105\061\061","\049\071\089\087\117\071\061\061","\109\104\108\047\079\043\080\121\050\122\072\118\111\102\077\076\120\105\061\061";"\079\116\055\066\109\098\120\061","\056\078\049\057\047\055\090\049\087\081\114\088\073\076\061\061";"\114\048\084\065";"\112\100\077\113\111\098\118\112\104\055\061\061","\109\079\053\056";"\120\078\085\107\052\117\072\121\102\055\088\117\122\055\061\061","\085\049\083\043\049\055\061\061","\100\112\106\065\043\116\049\102\076\049\120\061";"\081\067\049\110\116\080\043\066\053\055\061\061","\083\104\086\090\089\083\115\108\050\116\080\075\109\116\081\061";"\087\074\083\073\055\111\072\082\118\055\107\107\121\055\061\061";"\098\114\100\075\072\116\090\116\051\065\108\053\069\118\054\118","\052\121\075\090\069\106\099\120\120\051\080\100\051\055\061\061","\052\084\122\097\114\055\049\097\051\104\107\112\073\052\071\061","\085\089\050\052\082\047\043\053\086\098\105\111\076\102\105\061";"\119\070\097\089\118\071\071\119\105\102\053\100\071\076\061\061","\084\082\081\080\072\055\061\061","\048\106\099\090\104\071\085\118","\049\052\105\061","\104\104\057\111\108\048\081\083\052\071\082\061";"\107\116\055\087\073\071\061\061","\074\053\075\078\109\047\111\109\055\054\103\083\053\119\105\061","\111\110\074\086\072\053\069\100","\105\104\050\081\118\049\074\056\100\100\051\075\055\105\053\049\103\108\087\110\054\105\061\061";"";"\078\088\072\075\105\081\086\116\109\081\077\084\078\082\053\070\081\105\061\061";"\073\101\120\078\050\047\081\110\073\079\071\103\116\112\119\086\075\043\104\115\103\071\061\061";"\108\048\067\107\084\105\061\061","\088\047\056\119\097\073\104\084\051\099\065\107\085\114\108\101\097\120\048\107\084\047\081\061","\115\119\111\110\084\057\076\089","\119\074\097\055\053\116\104\079\106\076\105\054\105\108\090\072\079\113\090\084\097\076\061\061","\089\054\052\119\053\106\104\113\066\051\100\109\057\055\061\061","\078\066\053\103\090\072\078\080";"\074\089\116\051\119\112\065\084\081\070\049\104";"\050\071\106\104";"\087\119\047\043\116\101\111\077","\104\081\054\076\117\097\121\103\079\104\082\122";"\111\099\071\047\101\112\047\108\097\073\076\049\108\076\061\061";"\074\043\073\101\078\074\088\101","\066\109\119\070\109\107\120\081\111\069\070\106","\081\121\080\068\119\103\080\051\050\080\114\108\120\121\080\090\120\076\061\061","\119\103\086\113\119\103\080\102","\074\077\111\097\090\055\061\061","\077\113\105\115\090\101\050\068\072\109\054\073\119\043\105\061","\074\115\066\084\101\072\057\119\073\113\105\061","\073\109\087\078\086\052\071\101\114\100\078\049\067\055\061\061","\100\106\076\069\119\098\114\102\073\118\056\098";"\112\087\098\081\049\084\118\102\078\076\061\061";"\113\100\075\100\113\105\061\061","\100\090\112\107\057\066\056\043\053\080\088\049\111\088\102\061";"\111\053\108\081\109\081\104\108\072\104\077\112\078\080\080\114\111\055\061\061","\085\119\089\113\057\102\118\118\073\085\102\061";"\111\107\108\105\105\076\061\061";"\100\099\072\110\120\054\053\074\054\122\080\057\100\084\080\108\089\043\071\061","\115\110\107\057\071\088\066\117\056\073\067\114","\082\066\072\122\089\076\085\082\052\050\065\101\100\117\115\057\109\110\049\049";"\049\111\082\066\097\116\055\109\078\070\113\089\103\056\070\114","\084\119\103\076\050\107\097\110\083\054\107\081\079\084\106\075\107\068\057\100","\122\110\102\052\113\073\066\080\073\111\048\120\050\078\049\049";"\051\113\085\068\043\119\118\076\113\088\070\061","\049\089\043\103\057\054\079\051\112\110\052\081\056\085\074\052\050\074\119\082\071\051\120\061","\102\119\115\089\118\107\056\050\116\120\118\053\085\110\084\103\052\113\110\084\047\048\110\061";"\104\115\121\120\116\052\072\099\078\100\076\115\122\118\116\107\067\100\082\061","\047\089\054\066\109\055\061\061","\106\105\107\073\118\075\075\082\098\113\112\066\081\065\067\074\053\104\068\106\086\105\061\061";"\071\052\103\090","\047\110\067\113\100\077\115\118\115\088\075\103";"\079\079\090\056\107\113\077\072\077\110\068\121\080\105\061\061";"\119\073\086\105\080\073\081\080\057\105\061\061","\077\109\083\121\067\111\084\056\053\080\110\077";"\109\043\077\076\079\051\054\113\072\053\108\043\111\099\080\084\109\088\105\061";"\070\053\070\119\103\075\102\057\098\117\084\122\056\105\061\061","\097\110\122\121","\054\047\113\073\100\048\115\068\053\054\120\061";"\081\078\116\103\054\053\052\116\109\112\072\103\104\086\107\051";"\048\048\086\118\073\078\097\090","\056\069\068\079\122\074\051\083\113\067\070\088\117\100\049\097\088\105\061\061";"\075\088\119\082";"\049\122\089\079\098\054\072\117\115\081\120\043\119\049\054\104","\115\121\053\113\089\082\089\077\120\122\072\102\105\103\108\077\109\116\115\067\089\052\072\110\119\083\072\051","\089\103\080\090\089\105\061\061","\083\073\069\074\108\105\055\113","\074\114\052\075\111\121\048\082","\066\050\107\069\109\067\066\109";"\102\079\110\073\110\105\061\061";"\097\105\113\090\085\055\061\061";"\120\121\054\090\109\043\089\053";"\079\098\104\114\079\098\108\075\111\052\104\077\100\051\119\074";"\088\098\067\102\084\104\089\079\119\050\084\101";"\097\113\101\056\050\099\082\057\102\065\072\113\054\116\087\102\055\088\081\061","\102\117\071\101\068\105\112\108\052\118\047\051","\113\089\121\120\054\043\107\086\080\071\061\061","\070\111\055\061","\071\105\061\061";"\099\075\052\053\107\047\047\122\105\076\061\061";"\109\116\086\108\089\088\072\102\120\121\053\113\089\076\061\061";"\107\074\056\047\112\075\109\088\108\055\061\061";"\115\121\086\116\120\084\072\053\100\121\080\082\115\104\070\101","\069\073\067\105";"\050\051\066\085\118\121\117\053\119\070\112\107";"\068\098\112\081","\057\107\070\118\113\052\116\051\115\053\066\087\107\067\078\079\107\066\082\077\049\105\061\061","\054\082\080\067\048\080\087\117\079\104\114\118\050\083\089\067\100\121\082\061","\084\074\075\053\087\077\115\085","\082\119\085\086\097\109\114\089";"\103\115\048\076\120\082\043\088","\115\103\054\102\081\088\087\057\120\116\054\101\050\088\053\099\111\116\080\113\089\103\054\052\081\103\053\122\109\121\080\110";"\069\053\072\119\068\074\090\099\103\055\061\061";"\050\101\119\086";"\082\122\082\056\083\107\100\068\081\048\087\110\119\105\061\061","\074\047\080\055\104\121\118\043","\055\055\122\047\087\101\085\069\053\057\049\098\074\076\043\076\120\103\078\101\049\076\061\061","\070\071\054\086","\050\047\121\081\086\079\107\086\110\103\077\111\050\081\107\084","\084\053\118\110\105\086\108\110\115\078\097\082\077\076\086\065\106\079\087\052";"\113\083\052\116\105\055\061\061","\098\076\119\056\056\068\106\068\051\102\079\070";"\053\072\090\105\111\067\087\098\077\055\061\061","\050\083\117\102\079\103\050\068\100\103\087\074\100\054\108\083\115\105\061\061","\054\081\114\075\053\089\100\070\100\101\117\109";"\054\103\086\101\109\116\115\081\109\104\072\084\120\121\054\053\109\053\114\057\111\098\068\102";"\117\101\099\122\073\076\061\061","\076\117\112\099\069\100\077\119","\051\048\065\066","\057\084\077\056\106\116\110\080\107\048\082\061";"\075\115\055\101\053\075\109\069\102\071\061\061";"\067\082\102\099\079\097\043\084\122\078\065\061","\047\114\072\074\108\109\083\098\086\114\070\061","\056\084\072\083\069\100\084\089\108\089\106\061","\097\053\115\087";"\072\080\054\048\100\103\108\106\050\052\090\111\081\049\050\101\054\055\061\061","\089\121\074\057\109\043\117\061","\120\055\061\061";"\049\115\106\056";"\099\106\100\120\115\071\061\061";"\082\121\117\068\101\075\050\051\069\083\070\057\086\101\079\077";"\100\067\071\104";"\048\114\050\114\110\097\066\086\048\066\082\061";"\105\089\055\098\088\049\118\043\117\101\117\061";"\043\055\101\050\114\105\061\061";"\108\081\116\097\122\113\077\070\086\071\061\061";"\101\087\077\076\089\111\083\101";"\076\052\066\083";"\057\079\115\043\049\098\102\073\052\108\047\106\043\111\080\065","\121\055\061\061","\055\047\053\080\119\112\068\121\086\102\048\070\077\089\078\112\106\075\050\047\057\089\102\061","\121\099\055\054";"\108\087\115\111\120\051\076\098\069\052\120\065\090\105\061\061";"\082\067\120\050\111\076\061\061";"\069\115\115\079\081\122\088\107\117\048\113\100";"\057\051\074\077\050\071\103\089\071\119\055\081\056\055\061\061";"\109\103\109\068\081\113\054\047\047\076\061\061";"\105\109\077\051","\053\084\083\109\055\088\053\077\110\071\110\061";"\109\117\100\105\068\090\077\111\087\115\067\121\083\087\115\083\114\110\117\061";"\105\103\086\113\109\121\054\084\050\071\061\061";"\065\117\107\116\053\113\119\098\080\103\111\103\051\110\110\061","\078\049\080\118\079\043\050\087\115\116\090\075\081\116\104\097\100\084\120\061","\057\050\084\119\117\103\102\077","\097\084\105\067\052\078\066\052\076\081\105\061";"\072\116\108\115\079\043\115\067\115\049\114\121\049\043\072\106";"\056\099\102\053\085\055\061\061";"\086\120\070\110\086\098\104\118\051\114\101\098\081\115\055\087","\053\115\055\073\054\081\117\061";"\075\097\056\080","\049\103\117\103\054\083\055\068\120\103\077\115\078\052\119\051","\106\118\074\109\079\055\061\061","\119\102\056\090\054\099\082\105\043\057\079\065\105\071\061\061";"\051\120\104\051\103\076\061\061";"\089\084\080\089\072\052\054\117\049\081\115\113\054\054\072\074";"\103\048\074\109\050\121\087\106\076\071\061\061","\066\099\054\076";"\097\083\115\068\082\076\061\061";"\116\066\077\054\051\090\101\119\122\071\061\061";"\115\121\053\113\089\082\089\077\120\122\072\102\105\103\108\077\109\116\105\061";"\080\097\043\082\049\072\084\067\103\072\050\114\101\105\061\061";"\083\104\086\110\089\098\106\061","\111\043\072\119\081\102\074\074\089\083\054\102\119\104\053\088\109\071\061\061";"\118\083\084\073\107\056\056\049";"\120\104\080\106\089\103\074\075\072\052\054\074\081\116\105\101\100\051\079\061","\105\066\114\114\053\055\061\061","\051\106\107\075\099\085\122\057\071\098\117\061","\089\083\087\101\109\043\117\061","\057\078\083\111\098\053\078\102","\052\090\110\069\070\120\102\071\055\089\080\052\118\101\120\073";"\089\054\115\113\109\121\054\068\049\043\072\104\049\082\053\105","\054\119\085\121\099\047\068\071\101\052\048\084","\099\103\114\118\084\073\098\100\069\099\077\089\108\101\047\122\117\073\051\047\057\079\113\103\120\053\067\101\099\117\112\048\076\047\065\061","\098\051\054\120\051\055\061\061"}for M,e in ipairs({{121279-121278;-262977+263959},{220770+-220769;44630+-43677},{1022351-1021397;-813239+814221}})do while e[96980-96979]<e[-997961-(-997963)]do U[e[-847483-(-847484)]],U[e[248095-248093]],e[766265+-766264],e[911442+-911440]=U[e[797619+-797617]],U[e[387437+-387436]],e[1002972-1002971]+(372900+-372899),e[-78528-(-78530)]-(593919-593918)end end local function M(M)return U[M-(637936+-605936)]end do local M=U local e=table.insert local r={r=-102469+102470;F=821615-821575;T=561812+-561777;x=-734221+734249,["\055"]=-1047848-(-1047880),y=-285422-(-285460),o=-14308-(-14334),K=-655659+655693,["\043"]=302205+-302150,R=94302-94298,n=-189806+189850;e=-165147-(-165197);["\054"]=-785547-(-785568);u=753307-753299,w=946047+-946023;Z=-161552-(-161597);f=663190+-663138,["\047"]=607825-607783,p=704789-704779,s=-183835-(-183852);c=-105801+105804;L=987556-987508,P=541261-541256,H=97213-97200,["\053"]=-967789+967826,q=-1008808+1008854,["\050"]=-1046602-(-1046631),j=70357+-70301;["\052"]=721399+-721363,D=460802-460745,b=-886546+886568;["\049"]=-614059+614078,X=767000+-766993,i=-654899+654915;M=-595315+595356;A=-368541+368601,V=6909+-6848,S=861+-838;C=1033369+-1033354;t=-654297+654303,a=-960923-(-960934),B=127546-127488,["\056"]=-443770+443832;Y=-681901+681926;Q=990769+-990749;E=-901239-(-901298);k=335-272;O=648790-648778,m=399174-399147,z=328462+-328423;I=-701011-(-701042);g=1002160-1002106;U=-147400+147443,W=-33756+33765;N=689562-689532,d=958444-958426,l=689426-689393,G=996172-996172;["\051"]=357119+-357068,h=-917300-(-917353),J=818124-818075,["\048"]=248964-248950,["\057"]=412875-412828;v=-273735+273737}local O=math.floor local T=string.len local j=string.sub local Y=string.char local V=type local S=table.concat for U=711508-711507,#M,915642+-915641 do local q=M[U]if V(q)=="\115\116\114\105\110\103"then local V=T(q)local o={}local k=-74037+74038 local Z=627887-627887 local B=361819+-361819 while k<=V do local U=j(q,k,k)local M=r[U]if M then Z=Z+M*(408161+-408097)^((-321443-(-321446))-B)B=B+(866385+-866384)if B==554994+-554990 then B=563331-563331 local U=O(Z/(10468+55068))local M=O((Z%(-590698+656234))/(-945864-(-946120)))local r=Z%(366198+-365942)e(o,Y(U,M,r))Z=-116673-(-116673)end elseif U=="\061"then e(o,Y(O(Z/(269034+-203498))))if k>=V or j(q,k+(-730971+730972),k+(662307-662306))~="\061"then e(o,Y(O((Z%(284092-218556))/(-196209+196465))))end break end k=k+(-818704+818705)end M[U]=S(o)end end end return(function(U,r,O,T,j,Y,V,B,S,e,w,K,f,A,G,Q,F,v,Z,k,o,z,i,q,d)B,w,i,A,f,F,K,v,e,Z,G,k,S,d,Q,q,z,o=function(U)local M,e=271164-271163,U[-150221-(-150222)]while e do q[e],M=q[e]-(219624-219623),(-98124-(-98125))+M if-163597-(-163597)==q[e]then q[e],S[e]=nil,nil end e=U[M]end end,function(U,M)local r=Z(M)local O=function(O,T,j)return e(U,{O;T,j},M,r)end return O end,function(U,M)local r=Z(M)local O=function(O,T,j,Y,V)return e(U,{O;T,j;Y,V},M,r)end return O end,function(U,M)local r=Z(M)local O=function(O,T,j,Y,V,S)return e(U,{O;T,j;Y,V;S},M,r)end return O end,function(U)q[U]=q[U]-(-919692+919693)if q[U]==204116-204116 then q[U],S[U]=nil,nil end end,function(U,M)local r=Z(M)local O=function(O,T,j,Y,V,S,q)return e(U,{O,T;j,Y,V;S,q},M,r)end return O end,function(U,M)local r=Z(M)local O=function(O)return e(U,{O},M,r)end return O end,function(U,M)local r=Z(M)local O=function(O,T,j,Y,V,S,q,o)return e(U,{O;T,j;Y,V,S;q,o},M,r)end return O end,function(e,O,T,j)local P,p4,A4,C,x,H4,c,m,k4,V,d4,o4,J,y,K4,Q4,t,u,T4,W,L,q4,p,l,a,i4,B4,Y4,D,z4,O4,X,R,M4,h,F4,s,B,r4,j4,E,v4,n,H,D4,S4,V4,w4,X4,I,G4,Z,g,e4,b,N,Z4,k,q,W4,f4,y4,U4 while e do if e<9304653-482731 then if e<339828+4750963 then if e<-654931+3055297 then if e<239402+748783 then if e<832373+-279554 then if e<-110713-(-397591)then if e<985038-770377 then if e<506726-415084 then if e<376611+-320847 then X=S[T[608869+-608866]]c=M(334559+-301655)l=M(708556-675887)p=S[T[-985390+985391]]R=S[T[-277849+277851]]J=393333+17821565755381 H=R(l,J)E=10720286789129-14985 s=p[H]W=X[s]t=22686+18952599521755 p=S[T[142840-142837]]H=S[T[1017433+-1017432]]P=M(-816999+849226)l=S[T[-997812+997814]]J=l(P,E)R=H[J]J=M(681224+-649095)s=p[R]l=U[J]J=l()P=S[T[852074+-852073]]E=S[T[979780-979778]]n=E(c,t)c=17457641681925-(-797628)l=P[n]H=J[l]J=S[T[-365180-(-365181)]]P=S[T[-345557-(-345559)]]n=M(164297-131646)E=P(n,c)n=-200031+11417281520163 l=J[E]R=H[l]e=-590152-(-891430)E=M(99468-67437)l=S[T[831568+-831567]]J=S[T[812453-812451]]P=J(E,n)H=l[P]p=R[H]X=s*p y=W+X V=y else D=not B e=-62421+15636695 V=D end else e=B e=6879357-(-396435)V=Z end else if e<-776610+1021947 then S[k]=E e=S[k]e=e and 292996+10490783 or 4439920-(-731314)else e=true S[T[-801670+801671]]=e e=U[M(-13812-(-46080))]V={}end end else if e<-644839+1036943 then if e<-730792+1103533 then if e<-566637+932223 then l=M(99715-66791)W=S[T[-628703-(-628704)]]p=M(-816193+848323)X=S[T[1004204+-1004202]]R=20941449847796-327133 n=M(-440563+472825)y=V H=881234+4056903357711 s=X(p,R)V=W[s]X=S[T[360415+-360414]]R=M(162492-130112)s=S[T[-762886-(-762888)]]p=s(R,H)W=X[p]X=S[T[-849784-(-849787)]]p=S[T[-668776-(-668777)]]c=387695+5518564990874 R=S[T[61902-61900]]J=16022272632604-(-800264)H=R(l,J)l=M(-710970+743236)s=p[H]H=U[l]J=S[T[290571-290570]]P=S[T[-724737+724739]]E=P(n,c)l=J[E]R=H[l]n=2144430669813-244751 l=S[T[-961304+961305]]J=S[T[682537+-682535]]E=M(93813+-61717)c=M(263688+-231096)P=J(E,n)E=-557825+9704651314344 H=l[P]P=M(-455646+488221)p=R[H]t=2739788589946-992895 H=S[T[-874818-(-874819)]]l=S[T[127622+-127620]]J=l(P,E)R=H[J]J=M(-810204-(-842687))l=U[J]P=S[T[-732269-(-732270)]]E=S[T[401472+-401470]]n=E(c,t)J=P[n]E=804463+-804463 P=991467-991466 H=l[J]J=622403-622403 l=H(J,P,E)e={[V]=y;[W]=X,[s]=p,[R]=l}V={e}e=U[M(-1047784+1079981)]else e=g e=12651609-129420 V=e4 end else q=O[519317+-519316]e=q and 5974770-(-863246)or 121636+8506772 end else if e<-750926+1238335 then e=V and 823574+15396074 or-780993+17337404 else V=s e=p e=s and 6967695-(-882785)or 7655264-719997 end end end else if e<656925+157889 then if e<6625+704967 then if e<583493+58181 then if e<-706021+1293060 then e=R e=901126+14088382 X=p else l=568441+23208368356798 X=M(-927849-(-960292))W=U[X]s=S[T[548943+-548940]]p=S[T[-856328+856332]]H=M(308659+-276320)R=p(H,l)X=s[R]p=52194+-52058 y=W[X]s=181187+-181065 X=-29766-(-30021)e=61323+6837199 W=y(X,s,p)B=W end else c=M(816328-783353)n=U[c]c=M(-421205-(-453413))X=p E=n[c]n=E(q,X)E=S[T[954496+-954490]]c=E()P=n+c J=P+y P=-106287+106543 e=10421975-308495 l=J%P y=l c=-900988-(-900989)P=Z[k]n=y+c X=nil E=B[n]J=P..E Z[k]=J end else if e<732092-(-35003)then e=true V={e}e=U[M(560626-528565)]else e=S[T[-554385-(-554392)]]e=e and 10073298-(-473204)or 100848+11613804 end end else if e<879844-(-65719)then if e<-423620+1337103 then if e<-712336+1603000 then B=M(-110928-(-143057))s=23054863999185-866018 Z=U[B]n=10111021811821-(-150007)B=Z()D=S[T[738898+-738897]]X=M(17664+14803)y=S[T[978457+-978455]]W=y(X,s)Z=D[W]X=5401344510968-(-490971)V=B[Z]B=S[T[-171971+171972]]W=M(-453385-(-485832))D=S[T[237336+-237334]]y=D(W,X)X=M(346921+-314792)Z=B[y]e=V[Z]Z=S[T[-814346+814347]]W=24293820334378-218362 B=S[T[-666770+666772]]l=33775150100810-193499 y=M(-372970+405423)D=B(y,W)V=Z[D]W=U[X]X=W()H=M(-356607-(-388695))s=S[T[-893878+893879]]p=S[T[557624+-557622]]R=p(H,l)W=s[R]H=-717901+24353945264281 y=X[W]X=S[T[280368+-280367]]s=S[T[345991+-345989]]R=M(-513290+545944)p=s(R,H)W=X[p]p=M(-933459+965840)D=y[W]R=102237+6567090388117 W=S[T[797618+-797617]]E=M(-903819+936113)X=S[T[726809-726807]]s=X(p,R)y=W[s]B=D[y]Z=not B H=M(-779691+811820)e[V]=Z W=M(-459792-(-492379))V=M(350908-318664)e=U[V]B=S[T[343803+-343802]]D=S[T[441052+-441050]]X=10008059437932-315704 y=D(W,X)Z=B[y]R=U[H]H=R()W=e D=e l=S[T[-657862-(-657863)]]J=S[T[477722+-477720]]P=J(E,n)R=l[P]p=H[R]P=M(68447+-36299)E=46185+10623994683114 H=S[T[644282-644281]]l=S[T[-71739+71741]]J=l(P,E)P=26030333435030-879933 R=H[J]J=M(-248140-(-280154))s=p[R]R=S[T[702737+-702736]]H=S[T[-162660+162662]]l=H(J,P)p=R[l]X=s[p]y=X e=X and 65746+5194115 or 186692+6604890 else e=S[T[-978589+978590]]V=e()q=V y=24065406358583-(-825231)e=S[T[838204+-838202]]D=M(-430927+463239)k=S[T[-944252+944255]]Z=S[T[380947+-380943]]B=Z(D,y)D=e V=k[B]Z=e B=q e=q and 1524155-933675 or 7628377-729855 end else t=#l P=493809-493808 J=Z(P,t)P=y(l,J)u=-625136+625137 t=S[H]b=P-u m=W(b)e=-337687+2667070 J=nil t[P]=m P=nil end else if e<1868741-909813 then W=M(-508267-(-540396))y=U[W]W=y()X=S[T[-959857+959859]]H=-88924+27131431685302 R=M(310625-278526)s=S[T[746934-746931]]p=s(R,H)y=X[p]p=M(-122407-(-154773))D=W[y]W=S[T[-238049+238051]]X=S[T[-130677-(-130680)]]R=221665+30816518411821 s=X(p,R)y=W[s]B=D[y]e=645887+3665829 s=M(-509064+541799)y=S[T[-478437+478439]]W=S[T[-579318+579321]]p=40752+8340306210811 X=W(s,p)D=y[X]Z=B[D]q=Z else e=S[T[591918-591917]]y=16150598254167-73975 k=S[T[-766679-(-766681)]]D=M(281716+-248835)q=O[87212+-87211]Z=S[T[-84814-(-84817)]]B=Z(D,y)V=k[B]k=q e[V]=k q=nil V={}e=U[M(-947777+980702)]end end end end else if e<-908227+2635725 then if e<430392+911777 then if e<375426-(-921746)then if e<1845393-587164 then if e<1996653-924630 then V=S[T[-600643+600644]]y=34420280094066-470742 k=S[T[-923786+923788]]D=M(124318+-92048)Z=S[T[-301791+301794]]B=Z(D,y)q=k[B]e=V[q]V={e}e=U[M(-393966+426661)]else k=M(627619+-595226)V=U[k]p=542128+27628244626577 y=M(-319753+352338)W=637337+23445263692044 X=M(596884+-564206)s=11190197164432-(-146122)Z=S[T[475126-475125]]B=S[T[-1008766-(-1008768)]]D=B(y,W)k=Z[D]e=V[k]Z=S[T[748691-748688]]D=S[T[-893654+893655]]y=S[T[681351+-681349]]W=y(X,s)B=D[W]k=Z[B]s=M(798525+-766091)B=S[T[-886891+886894]]y=S[T[535024+-535023]]W=S[T[715883-715881]]X=W(s,p)s=23228805534549-(-956139)D=y[X]Z=B[D]V=e(k,Z)B=M(439530-406829)e=nil X=M(367820+-335185)k=V Z=e V=U[B]D=S[T[586614-586613]]y=S[T[584416+-584414]]W=y(X,s)B=D[W]s=-581513+30550394001179 e=V[B]B=e D=S[T[95528+-95527]]X=M(-177615+209657)y=S[T[-319715+319717]]W=y(X,s)V=D[W]e=M(-293108+326047)e=q[e]e=e(q,V)D=e e=D and 15627617-(-227884)or 516326+7575323 V=D end else e=S[T[41710-41709]]y=7073535453198-(-451791)k=S[T[-419407-(-419409)]]D=M(-417043-(-449809))Z=S[T[461743-461740]]q=O[530682+-530681]B=Z(D,y)V=k[B]k=q q=nil e[V]=k e=U[M(458939-426336)]V={}end else if e<1012617+300530 then Z=S[T[-600543+600544]]D=S[T[-431584-(-431586)]]q=nil y=S[T[-1026268+1026271]]H=M(277993-245105)X=M(-35451+68283)s=3744009447069-(-106546)W=y(X,s)B=D[W]W=M(-249396+282353)y=U[W]X=S[T[583385-583383]]l=4505073925351-(-1002314)s=S[T[-612180+612183]]R=s(H,l)W=X[R]s=-130093+130093 D=y[W]X=350173-350173 W=-562404+562404 y=D(W,X,s,k)Z[B]=y k=nil e=U[M(-119174-(-151989))]V={}else y=26307725657792-677606 q=M(953316+-920615)V=U[q]D=M(755402-723334)k=S[T[680710-680709]]Z=S[T[641083-641081]]B=Z(D,y)q=k[B]e=V[q]q=S[T[-141071-(-141074)]]Z=S[T[-556075-(-556079)]]B=Z()Z=S[T[-115434-(-115439)]]k=B-Z V=e(q,k)q=V e=S[T[-346188-(-346194)]]V=e(q)q=nil e=S[T[456017+-456010]]V=e()V={}e=U[M(-410189-(-442580))]end end else if e<874500+780294 then if e<937833-(-694063)then if e<1009271-(-443911)then S[k]=e4 a=245640-245639 M4=S[L]N=M4+a x=C[N]g=R+x x=-373983+374239 e=g%x N=S[u]x=H+N R=e N=-904189-(-904445)g=x%N e=7230412-(-112294)H=g else e=6295738-(-578110)end else x=709966+-709965 e=-768969+2111906 g=C[x]e4=g end else if e<678797+1021441 then k=S[T[965975-965972]]X=23117282497429-141705 s=63875+16377700295751 W=M(-890337-(-922399))B=S[T[-337698-(-337699)]]D=S[T[-531074+531076]]y=D(W,X)Z=B[y]W=-1044100+32794376940075 y=M(-979770+1012139)V=k[Z]Z=S[T[439596+-439595]]B=S[T[597208+-597206]]D=B(y,W)H=34967914963547-697024 k=Z[D]e=V[k]X=46127+11864246509925 k=e B=S[T[-162323-(-162324)]]W=M(366864+-334383)D=S[T[635959-635957]]y=D(W,X)Z=B[y]V=q[Z]e=V-k Z=e B=M(-22188-(-54993))X=M(983142+-950741)V=U[B]D=S[T[538729+-538728]]y=S[T[182194+-182192]]W=y(X,s)B=D[W]e=V[B]V=e()W=M(793577+-760625)R=M(945643+-913510)B=V V=S[T[374707-374706]]D=S[T[-824547-(-824549)]]X=-841449+8100532954533 y=D(W,X)e=V[y]y=S[T[-95811-(-95815)]]X=S[T[-895548+895549]]s=S[T[742975-742973]]p=s(R,H)W=X[p]R=M(-866294+899204)D=y[W]V={D}B[e]=V W=M(-942443-(-975218))X=-576792+19360196685903 H=-568023+6878031312729 V=S[T[-159791-(-159792)]]D=S[T[-92006-(-92008)]]y=D(W,X)W=M(827167-794901)e=V[y]y=U[W]X=S[T[-736677-(-736678)]]s=S[T[553267+-553265]]p=s(R,H)R=617677+28876726355897 W=X[p]D=y[W]W=S[T[99072-99071]]p=M(-371371-(-404322))X=S[T[827452+-827450]]s=X(p,R)y=W[s]V=D[y]W=M(-916579-(-949500))X=439690+26781535746861 B[e]=V V=S[T[-450884-(-450885)]]D=S[T[-137023-(-137025)]]y=D(W,X)e=V[y]V=true B[e]=V V=M(-17219-(-49749))e=U[V]V=M(-795942-(-828191))V=e[V]V=V(e,k,Z,B)D=V y=not D V=y e=y and 712298+4614702 or 4589320-338688 else W=M(907234-875105)e=8504947-938442 y=U[W]W=y()X=S[T[421770+-421769]]R=M(162589+-130513)s=S[T[-41220-(-41222)]]H=145956+32070342836273 p=s(R,H)y=X[p]D=W[y]W=S[T[-161804-(-161805)]]X=S[T[350555-350553]]R=31744143202627-(-204923)p=M(-185381-(-218250))s=X(p,R)y=W[s]s=M(597884+-565065)p=48564+18186192397152 B=D[y]y=S[T[-356289-(-356290)]]W=S[T[-107716-(-107718)]]X=W(s,p)D=y[X]Z=B[D]k=not Z V=k end end end else if e<626227+1626197 then if e<2425566-267585 then if e<-573061+2714133 then if e<1722589-(-359236)then Z=Z+D k=Z<=B W=not y k=W and k W=Z>=B W=y and W k=W or k W=3946468-(-702830)e=k and W k=526987+13421819 e=e or k else E=M(759723+-727457)m=M(475373+-442821)R=e P=U[E]b=7159121991702-248593 n=S[T[991836+-991835]]c=S[T[-658844+658846]]t=c(m,b)E=n[t]J=P[E]E=S[T[-634194+634195]]t=M(-52203+84506)m=-185404+32927915118625 n=S[T[528427-528425]]c=n(t,m)P=E[c]l=J[P]H=D==l e=H and-876924+1430741 or 648646+13364106 p=H end else s=D p=e e=D and-297171+5568804 or 450811+15472856 end else if e<2846171-649486 then e=U[M(932690+-900407)]V={}else V=true s=D V=e e=-323042+6096816 s=nil end end else if e<-1040441+3343572 then if e<432081+1865516 then if e<-948803+3236630 then k=S[T[153497+-153494]]Z=492289+-492257 R=295754+-295741 s=-567681-(-567683)q=k%Z B=S[T[715446+-715442]]W=S[T[840011+-840009]]J=S[T[-769874-(-769877)]]l=J-q J=535058-535026 H=l/J p=R-H X=s^p y=W/X s=455258-455002 D=B(y)B=4295732999-765703 Z=D%B D=-745509+745511 B=D^q q=nil k=Z/B B=S[T[-744594+744598]]X=-689934-(-689935)W=k%X X=4294421813-(-545483)y=W*X D=B(y)B=S[T[-835362+835366]]y=B(k)Z=D+y W=-787078+852614 D=-719153+784689 B=Z%D y=Z-B D=y/W W=693303+-693047 k=nil y=B%W X=B-y W=X/s s=682057-681801 X=D%s R=960532-960276 p=D-X X=nil s=p/R p={y,W,X,s}X=nil S[T[-601389-(-601390)]]=p W=nil D=nil e=401050+6342450 y=nil s=nil B=nil else n=S[T[212048+-212047]]b=32365717198729-875690 c=S[T[873161-873159]]m=M(-137221-(-170198))t=c(m,b)E=n[t]P=R[E]n=S[T[-655756-(-655757)]]b=33451732969847-126110 m=M(-812944+845667)c=S[T[-765612-(-765614)]]t=c(m,b)e=558336+3631343 E=n[t]J=P~=E H=J end else D=M(-179950-(-212028))q=M(-510946-(-543339))V=U[q]k=S[T[141882+-141881]]R=-1004669+29119422597492 y=24525079828878-814322 Z=S[T[247045-247043]]B=Z(D,y)q=k[B]e=V[q]B=S[T[-188242-(-188245)]]s=M(144312+-111871)y=S[T[-491152-(-491153)]]p=20353759289272-(-460109)W=S[T[-810781+810783]]X=W(s,p)D=y[X]Z=B[D]X=M(-617523-(-649973))s=30055840949255-470364 D=S[T[-132614+132615]]y=S[T[99630+-99628]]W=y(X,s)B=D[W]k=Z[B]Z=65678+-65676 p=M(-958779-(-990838))q=k/Z D=S[T[-581731-(-581734)]]W=S[T[-1022634-(-1022635)]]X=S[T[1021231+-1021229]]s=X(p,R)y=W[s]B=D[y]y=S[T[841682-841681]]p=18278992219711-(-594688)s=M(479459+-447185)W=S[T[-959568+959570]]X=W(s,p)D=y[X]Z=B[D]B=-585547+585549 k=Z/B V=e(q,k)X=M(833762-800991)B=M(-51536+83665)s=20680459970237-(-98017)q=V Z=U[B]B=Z()D=S[T[-718041+718042]]y=S[T[692411-692409]]W=y(X,s)Z=D[W]k=B[Z]B=S[T[997524+-997523]]W=M(725382-693256)D=S[T[-818239-(-818241)]]X=-84424+9838536596397 y=D(W,X)Z=B[y]V=k[Z]Z=S[T[-396804+396805]]B=S[T[854718-854716]]W=-885389+5842855791917 y=M(1030750-997836)D=B(y,W)k=Z[D]e=V[k]k=e e=S[T[554413+-554409]]V=e()e=V and 12566616-783481 or-897833+6970769 end else if e<3303341-974192 then e=o()y=D S[e]=W W=e X=S[W]s=S[T[562957+-562952]]e=X~=s e=e and-603458+9605228 or 12360347-929489 else P=#l t=511985+-511985 J=P==t e=J and 763589+12890682 or 823463+99051 end end end end end else if e<763244+3466902 then if e<2613297-(-863609)then if e<211470+2669686 then if e<311123+2325785 then if e<-233484+2749028 then if e<2279037-(-189734)then V=M(733040-700422)q=M(902421-870185)e=U[V]V=U[q]q=M(361609+-329373)U[q]=e q=M(-37677-(-70295))e=12242783-(-853438)U[q]=V q=S[T[-225755-(-225756)]]k=q()else e=s e[V]=X H=426276+12664394733029 R=M(-101811-(-134098))e=S[W]X=S[T[700141-700140]]s=S[T[-226570+226572]]p=s(R,H)R=e s=e V=X[p]H=S[Z]l=H()e=l and 15055365-(-593)or-166981+5052212 p=l end else V=M(687513-655168)e=S[T[438772+-438771]]V=e[V]V=V(e)V=nil e=nil S[T[-26874-(-26875)]]=e S[T[-798595+798597]]=V e=U[M(-871400+903581)]V={}end else if e<3769864-1015289 then e=11859164-92428 p=nil y=nil else V=S[T[-60544+60545]]y=-128548+13215777033774 D=M(-591458-(-623555))k=S[T[232796-232794]]Z=S[T[-215165-(-215168)]]B=Z(D,y)q=k[B]e=V[q]V={e}e=U[M(250886+-218769)]end end else if e<3042238-(-88865)then if e<528649+2421356 then if e<-1023314+3924477 then Z=V B=S[T[829425+-829424]]X=160428+13295688574339 D=S[T[-215515+215517]]W=M(-132429+164495)y=D(W,X)V=B[y]e=k==V e=e and 14251930-933746 or 107601+14641047 else L=371326+30612149570864 u=M(-694401-(-726562))t=S[T[-192602+192603]]E=e m=S[T[-291559-(-291561)]]b=m(u,L)L=M(795535-763167)c=t[b]n=p[c]m=S[T[-657090+657091]]b=S[T[82610-82608]]I=9993616011842-204821 c=M(786121+-753182)c=n[c]u=b(L,I)t=m[u]c=c(n,t)P=c e=c and 9472837-(-826880)or 67017+8164489 end else X=M(824443+-791850)H=M(-417363+449421)H=q[H]W=U[X]R={H(q)}H={W(r(R))}X=H[912529-912528]e=8165403-(-331462)p=H[784744-784741]s=H[179059-179057]end else if e<270002+3188922 then e=4041831-356553 B=nil D=nil else y=e R=M(-295780+327909)p=U[R]R=p()H=S[T[40705-40704]]l=S[T[-336501-(-336503)]]E=28099293770940-(-933472)P=M(-414741+446829)J=l(P,E)P=511952+20471652914540 p=H[J]J=M(239755-207727)s=R[p]R=S[T[848215-848214]]H=S[T[305956+-305954]]l=H(J,P)p=R[l]X=s[p]p=S[T[-53846-(-53847)]]R=S[T[241940-241938]]l=M(88603+-56245)H=R(l,J)s=p[H]W=X[s]e=W and-748127+15340613 or 3804765-242912 D=W end end end else if e<-790130+4532900 then if e<3700668-23187 then if e<3247254-(-349660)then if e<4024953-534423 then H=S[T[-669391-(-669396)]]m=M(-89443-(-122334))b=24587877366310-642413 n=S[T[653249+-653248]]c=S[T[-372046+372048]]t=c(m,b)E=n[t]P=R[E]E=M(502102+-469217)E=H[E]E={E(H,P)}l=E[-788081+788082]J=E[-723459+723457]P=e e=J and 202996+8042463 or 12022556-71538 H=J else V=D e=y e=5139603-(-271184)end else D=S[T[1028920-1028917]]P=M(-460937+493352)p=M(13972-(-18377))W=S[T[-713935+713936]]R=-751052+16375021327253 X=S[T[702377-702375]]s=X(p,R)y=W[s]l=20613540258610-(-655948)H=M(-437313+469895)B=D[y]W=S[T[-390961+390964]]s=S[T[-1029079+1029080]]E=493994+2285214513790 p=S[T[-511061+511063]]R=p(H,l)X=s[R]y=W[X]R=M(-623309-(-655438))p=U[R]R=p()H=S[T[-198127+198128]]l=S[T[496422-496420]]J=l(P,E)p=H[J]J=M(487444-454750)P=827303+12108598146655 s=R[p]R=S[T[-1041010-(-1041011)]]H=S[T[844056+-844054]]l=H(J,P)p=R[l]J=7633462266875-769561 X=s[p]p=S[T[165872-165871]]l=M(954469-922011)R=S[T[-202740-(-202742)]]H=R(l,J)e=3202143-319958 s=p[H]W=X[s]D=y*W Z=B+D V=Z end else if e<-1014558+4712817 then k,D=Z(q,k)e=k and 15747630-(-842848)or 4723637-(-384212)else e=true V={e}e=U[M(-650993+683043)]end end else if e<-682476+4623646 then if e<2836592-(-1003294)then if e<199096+3586231 then k=B e=D e=B and 13612304-923626 or 456514+6785572 else q=O[-58436-(-58437)]e=not q e=e and 3808737-(-247043)or 1870568-679670 end else V=M(-120076+153023)q=M(542096+-509437)e=U[V]V=e(q)e=U[M(202193-169326)]V={}end else if e<3118877-(-959694)then e=nil V={e}e=U[M(-378421-(-410800))]else e=l e=H and 3585961-104482 or 16323418-(-382400)end end end end else if e<181862+4392954 then if e<5132329-778379 then if e<4169741-(-135814)then if e<142477+4126106 then if e<5060767-814882 then p=nil l=nil y=nil R=nil e=-881052+12647788 H=nil else X=S[T[-140011-(-140012)]]H=4586092995743-(-762808)R=M(-7819+40294)s=S[T[924002-924000]]p=s(R,H)W=X[p]J=-552890+851477164358 y=D[W]l=M(498357+-465665)p=S[T[1023276+-1023275]]R=S[T[351193+-351191]]W=M(192323-160248)W=y[W]H=R(l,J)s=p[H]X=q[s]W=W(y,X)e=4351905-(-975095)V=W end else e=10341167-(-706573)J=nil end else if e<4836253-511328 then e=k e[V]=q e=U[M(-573449-(-605677))]V={}else e=S[T[960208-960202]]V={e(q,r(k))}e=U[M(-875546+907884)]V={r(V)}end end else if e<4490714-4175 then if e<891515+3508325 then if e<3881784-(-495768)then e=S[T[-108401+108402]]e=e and 4743111-(-330557)or 6305360-(-550286)else y=nil e=8520154-(-708729)W=nil B=nil end else V={B}e=U[M(-557377+590073)]end else if e<-812063+5348329 then B=Z e=14941497-680203 V=D()B=nil D=nil else e=V and 12328451-(-639856)or-1017564+9922655 end end end else if e<4502628-(-243245)then if e<4567090-(-82206)then if e<4289822-(-337327)then if e<950011+3641182 then V=M(450688-418343)e=S[T[-400481+400482]]V=e[V]V=V(e)e=S[T[234364-234362]]V=M(83258-50913)V=e[V]V=V(e)e=U[M(286398+-253986)]V={}else q=S[T[-592895+592896]]V=#q q=-357161-(-357161)e=V==q e=e and-957363+17356399 or-283022+7026522 end else c=M(724016-691993)m=M(145421+-113185)e=U[c]t=U[m]c=e(t)e=M(-122571-(-155189))U[e]=c e=1025481+13839941 end else if e<-815711+5499095 then s=423936+-423681 e=S[T[560382-560381]]X=-36163-(-36163)W=e(X,s)k=Z q[k]=W e=-422761+2503382 k=nil else e=-736811+2927161 R=M(249354-217263)H=416120+21783633432103 k=S[T[400840-400833]]y=S[T[-3352+3355]]X=S[T[-12662+12663]]s=S[T[-924296+924298]]p=s(R,H)W=X[p]D=y[W]B=k(D)S[T[-775337-(-775341)]]=B end end else if e<5526586-644355 then if e<5847984-989877 then if e<5682458-879227 then h=-1015351-(-1015352)u=857896+-857796 m=o()b=M(728636-695935)S[m]=E V=U[b]b=M(291882+-259163)e=V[b]b=344729+-344728 V=e(b,u)b=o()S[b]=V L=730157-729902 u=268021-268021 e=S[W]V=e(u,L)u=o()S[u]=V e=S[W]C=938933-938931 L=111688-111687 I=S[b]V=e(L,I)L=o()S[L]=V V=S[W]I=V(h,C)V=772012-772011 e=I==V I=o()V=M(17323+15223)C=M(-95491-(-127562))S[I]=e x=M(-302824+334847)g=U[x]N=S[W]a=-516543-(-516543)U4=-802531-(-812531)M4={N(a,U4)}x=g(r(M4))g=M(-252166-(-284237))e=M(908841-876658)e4=x..g h=C..e4 e=J[e]e=e(J,V,h)h=o()C=M(88666+-56270)e4=d(14925999-269995,{W,m,p;Z,k;P,I;h;b,L;u;s})S[h]=e V=U[C]C={V(e4)}e={r(C)}C=e e=S[I]e=e and 107617+5549900 or-613337+13895960 else y=-488450+14092253515172 e=S[T[-727439+727440]]D=M(-466333-(-498498))k=S[T[107948+-107946]]q=O[-762312-(-762313)]Z=S[T[490193+-490190]]B=Z(D,y)V=k[B]k=q e[V]=k q=nil e=U[M(-1013286-(-1046230))]V={}end else q=M(669244-637056)y=275381+13791443887457 D=M(-215140+247377)V=U[q]k=S[T[-472236+472237]]Z=S[T[-934621-(-934623)]]B=Z(D,y)q=k[B]p=942582+6071360497941 D=M(909204-876938)e=V[q]q=-21051+21052.5 B=U[D]y=S[T[-780455-(-780456)]]s=M(-84122+116930)W=S[T[-823659+823661]]X=W(s,p)D=y[X]s=1096325737558-469592 Z=B[D]X=M(220814+-188067)D=S[T[-248184+248185]]R=5873430801655-860744 y=S[T[-214389-(-214391)]]W=y(X,s)y=M(311850+-279584)p=M(229605-197372)J=-952588+17812321200481 B=D[W]k=Z[B]D=U[y]W=S[T[581122-581121]]X=S[T[236275+-236273]]s=X(p,R)y=W[s]s=M(-550156-(-582911))B=D[y]y=S[T[-671033+671034]]p=34952504462409-(-324427)W=S[T[-309880-(-309882)]]X=W(s,p)s=7161771122158-(-356120)D=y[X]p=M(513250+-480840)l=M(-332644+364808)Z=B[D]V=e(q,k,Z)q=V e=S[T[39561+-39558]]X=M(696716+-663928)k=S[T[-601449+601453]]V=M(-433274-(-465575))D=S[T[-817437-(-817438)]]y=S[T[-367242+367244]]W=y(X,s)B=D[W]W=S[T[-237535-(-237536)]]R=14973269806133-569593 D=199591-199590 X=S[T[-572153-(-572155)]]s=X(p,R)y=W[s]s=M(1036533-1003576)X=U[s]p=S[T[706088-706087]]R=S[T[933358+-933356]]H=R(l,J)s=p[H]W=X[s]s=-409908+409908 p=325850+-325850 R=-53685+53685 H=-939438+939438 X=W(s,p,R,H)Z={[B]=D;[y]=X}V=e[V]V=V(e,k,q,Z)X=M(-518482+550893)e=M(-199904-(-232134))e=V[e]e=e(V)e=S[T[666591+-666588]]k=S[T[-146385-(-146390)]]D=S[T[909421+-909420]]y=S[T[-1032388-(-1032390)]]l=M(-371286-(-403543))s=27193112747843-208333 W=y(X,s)B=D[W]W=S[T[-677619+677620]]D=-792448+792449 X=S[T[-382226-(-382228)]]p=M(-985537+1018139)R=8925950575449-619293 J=967959+13950349005897 s=X(p,R)y=W[s]s=M(-945672-(-978629))X=U[s]p=S[T[447744-447743]]R=S[T[-607802-(-607804)]]H=R(l,J)s=p[H]W=X[s]p=189237+-189237 s=-102747-(-102747)H=-580410-(-580410)R=944099-944099 V=M(902271-869970)X=W(s,p,R,H)s=200984+14103317366927 V=e[V]Z={[B]=D;[y]=X}V=V(e,k,q,Z)e=M(-349057+381287)e=V[e]e=e(V)X=M(-817462-(-850275))e=S[T[-293160-(-293163)]]k=S[T[-332517-(-332523)]]D=S[T[381809+-381808]]y=S[T[-348141+348143]]W=y(X,s)B=D[W]D=-123953+123953 V=M(377198-344897)Z={[B]=D}V=e[V]V=V(e,k,q,Z)Z=d(20086+4564463,{T[-169470-(-169478)],T[-976717+976723]})e=M(-552568-(-584798))e=V[e]q=nil e=e(V)k=508179+-508177.5 e=S[T[-252209-(-252216)]]V=M(-616599+648753)V=e[V]V=V(e)V=M(-73397+105892)e=U[V]V=e(k,Z)V={}e=U[M(653709+-620775)]end else if e<5725203-701188 then e=R X=p e=p and 260122+9770654 or-729852+13517326 else e=U[M(342976+-310612)]V={}end end end end end else if e<6084753-(-981146)then if e<5683088-(-395980)then if e<6351055-783031 then if e<5104523-(-195816)then if e<5805438-597209 then if e<4826243-(-328758)then if e<4955240-(-168445)then q=M(-223958-(-256526))e=S[T[-47393+47397]]q=e[q]q=q(e)e=510002+-510002 k=e Z=M(-632697+665290)e=U[Z]y={e(q)}e=14466920-(-283130)B=y[-325115-(-325117)]D=y[-174704+174707]Z=y[422284-422283]else e=true V={e}e=U[M(910691+-878110)]end else e=true e=-466130+13626189 end else if e<-1036799+6296927 then l=15629586626010-(-730772)s=S[T[252249-252248]]H=M(353934-321151)p=S[T[719674-719672]]R=p(H,l)e=178968+6612614 X=s[R]y=X else W=s e=p e=7952212-410328 end end else if e<-497497+5971600 then if e<636028+4729799 then if e<5037178-(-317612)then e=U[M(430614+-398364)]V={V}else D=M(-284674+316849)e=Z e[V]=k e=S[T[-828333+828335]]k=S[T[-369833-(-369836)]]Z=S[T[277690+-277686]]y=695169+26884290155877 B=Z(D,y)D=e V=k[B]B=q Z=e e=q and-43791+8687002 or 1043594+2716614 end else e=V and-902594+14528577 or 3539606-(-792856)end else if e<-511120+5994840 then e=nil S[T[-876738+876741]]=e V=nil q=nil S[T[8715+-8711]]=V V={}e=U[M(417499-384916)]S[T[-6029+6034]]=q else D=M(-214107-(-246687))q=O[1037686-1037685]y=20219145344244-389165 k=S[T[47265-47264]]Z=S[T[491460+-491458]]B=Z(D,y)V=k[B]e=q[V]k=e e=not k e=e and-58303+8994620 or 10503377-(-432194)end end end else if e<1009145+4716332 then if e<-449361+6110160 then if e<5301059-(-354886)then if e<572486+5059225 then q=O[841930+-841929]e=S[T[-663132-(-663133)]]k=O[-401383+401385]Z=e e=Z[k]e=e and-737468+8297312 or 767918+6320421 else s=19072532195178-(-932679)e=S[T[709306-709305]]B=M(-635227+667815)q=S[T[-302409+302411]]k=S[T[-428676-(-428679)]]D=28010585191682-(-1048049)Z=k(B,D)V=q[Z]Z=S[T[-565086+565087]]X=M(9030-(-23101))D=S[T[741342+-741340]]y=S[T[-78506-(-78509)]]W=y(X,s)B=D[W]k=Z[B]q=not k e[V]=q e=U[M(-474388+507141)]V={}end else e4=S[k]e=e4 and 8776716-(-91901)or 577824+11944365 V=e4 end else if e<-555923+6251784 then P=H e=15587413-(-425413)B=P E=R Z=E else Z=185229+-185181 k=S[T[-469299-(-469302)]]e=11826052-573539 q=k*Z k=-39398-(-39655)V=q%k S[T[-117048+117051]]=V end end else if e<6126361-143124 then if e<5356973-(-593326)then if e<5354881-(-578938)then H=M(-703455+736023)W=M(-575905-(-608498))y=U[W]p=S[T[507481+-507475]]H=p[H]R={H(p)}p={y(r(R))}W=p[306319-306318]s=p[-838205+838208]X=p[699286-699284]e=-501410+12268146 else X=S[T[951293+-951292]]R=M(-770701-(-803215))c=-274102+12496601924977 s=S[T[423361-423359]]H=8358741658302-605066 p=s(R,H)n=M(-448462+480471)W=X[p]y=D[W]p=S[T[403027+-403026]]l=M(-266675+299185)R=S[T[-517728+517730]]J=-291540+16578530627835 H=R(l,J)l=M(-631709-(-663838))s=p[H]X=D[s]H=U[l]l=H()J=S[T[-621787+621788]]P=S[T[-913738+913740]]E=P(n,c)n=-717586+3786519607797 H=J[E]R=l[H]l=S[T[-32922+32923]]E=M(-897307+929950)J=S[T[44372+-44370]]P=J(E,n)E=16829+26572146142872 H=l[P]p=R[H]e=7670522-(-642383)P=M(-8395-(-40508))H=S[T[-759398-(-759399)]]l=S[T[664208-664206]]J=l(P,E)R=H[J]s=p[R]W=X*s V=y+W S[T[889586+-889582]]=V end else V=nil e=S[T[293131+-293130]]q=O[219403+-219402]e[q]=V e=S[T[1039432-1039430]]e=e and 9291788-(-756352)or 9662402-(-890006)end else if e<5320113-(-742265)then e=H e=R and 340091+11079904 or-5069+2716479 else Z=k V=nil B=V V=false y=M(-456030-(-488656))e=-617227+6814458 D=V V=U[y]s=S[T[72415-72410]]p={V(s)}X=p[522551-522548]W=p[1034315-1034313]y=p[524008+-524007]end end end end else if e<7333189-577312 then if e<7054854-696562 then if e<5253800-(-975875)then if e<89642+6064840 then if e<5919427-(-170822)then y=-430197+20036188910823 D=M(-888580-(-920757))q=O[336931-336930]e=S[T[385882-385881]]k=S[T[978218+-978216]]Z=S[T[-836750-(-836753)]]B=Z(D,y)V=k[B]k=q e[V]=k q=nil e=U[M(779602+-746707)]V={}else V=S[T[-1043965+1043966]]D=M(939023-906891)k=S[T[-52193-(-52195)]]y=28637178341703-(-428752)Z=S[T[1028358+-1028355]]B=Z(D,y)q=k[B]e=V[q]V={e}e=U[M(-932230-(-964969))]end else X=y(W,X)e=X and 795940+1429736 or 6087212-313438 end else if e<-13613+6361747 then s=M(-970244+1002743)y=S[T[-1041597+1041598]]W=S[T[-758161+758163]]p=28862426940001-724449 X=W(s,p)D=y[X]V=Z[D]D=-40580-(-40580)e=V<=D e=e and-201267+3907992 or 12002528-(-1042653)else Z=M(-681276+713977)V=U[Z]W=M(75037+-42389)X=982871+10516230853578 B=S[T[-963644+963646]]D=S[T[718158-718155]]y=D(W,X)Z=B[y]e=V[Z]Z=S[T[784613-784609]]B=S[T[608482-608477]]V=e(k,Z,B)e=S[T[-436728+436734]]k=V Z=e(k)e=497262+8875187 end end else if e<7083552-539426 then if e<5844499-(-631227)then if e<301471+6130813 then W=M(976667-943729)X=97263+550611109137 B=S[T[-744234-(-744235)]]D=S[T[-515252+515254]]p=M(-246825-(-279176))y=D(W,X)R=18369375202425-248592 Z=B[y]V=q[Z]y=M(871485+-839356)D=U[y]y=D()W=S[T[56043+-56042]]X=S[T[770052+-770050]]s=X(p,R)D=W[s]B=y[D]y=S[T[-602832+602833]]p=18423696090268-394009 s=M(299604-266925)W=S[T[-413021-(-413023)]]X=W(s,p)D=y[X]Z=B[D]e=V==Z e=e and 71133+16229774 or-890380+12320494 else e=true V={e}e=U[M(48528-16194)]end else J=M(288768-255973)R=S[T[-258803-(-258805)]]P=22820663248561-(-959185)H=S[T[23866+-23863]]l=H(J,P)p=R[l]l=M(-920090+952533)H=U[l]e=14215408-(-1013273)J=S[T[1031351+-1031349]]P=S[T[800506-800503]]c=2500812844077-(-759903)n=M(-638361-(-670733))E=P(n,c)l=J[E]P=-930757+930817 R=H[l]l=647671+-647611 J=592272-592092 H=R(l,J,P)P=-105603+1475052003121 J=M(-431011+463131)X[p]=H R=S[T[-306166-(-306168)]]H=S[T[-542796+542799]]l=H(J,P)p=R[l]t=307826+335850098218 l=S[W]P=S[T[992773-992771]]E=S[T[233101+-233098]]c=M(212271-179358)n=E(c,t)J=P[n]H=l[J]c=682457+30163699666181 n=M(23307+9069)J=S[T[7672-7670]]P=S[T[-444574-(-444577)]]E=P(n,c)l=J[E]R=H..l X[p]=R end else if e<6422045-(-325976)then Z=M(-499894-(-532447))k=U[Z]Z=M(-798575+831426)q=k[Z]Z=S[T[159684+-159683]]k={q(Z)}V={r(k)}e=U[M(356259-324055)]else e=B e=k and 4564774-(-175295)or 12989086-174982 end end end else if e<56442+6815792 then if e<-818993+7662457 then if e<6740843-(-99677)then if e<502894+6308452 then B=y e=W e=y and 15796779-53081 or-719513+10677097 else s=-154382+5387434419418 V=M(651583+-619269)e=U[V]Z=S[T[141974+-141973]]X=M(861201+-828765)D=S[T[-724579-(-724581)]]y=S[T[-773672+773675]]W=y(X,s)B=D[W]k=Z[B]V=e(k)k=V e=k and 847334+5507683 or 10144387-771938 end else W=S[T[-703832-(-703833)]]X=S[T[-81655-(-81657)]]R=-938779+1677285529128 p=M(-382537+415043)s=X(p,R)y=W[s]D=B==y e=271008+16015420 V=D end else if e<6699252-(-156812)then q=M(486827-454473)V=U[q]k=S[T[-379002-(-379004)]]y=-410882+31633035771532 Z=S[T[-875566-(-875569)]]D=M(169951+-137053)B=Z(D,y)W=332084+2214309606099 q=k[B]e=V[q]k=S[T[394860+-394858]]y=-827862+14215363918769 D=M(-625512+657785)Z=S[T[970683+-970680]]B=Z(D,y)X=M(622912+-590079)D=M(-413720-(-446143))q=k[B]V=e(q)S[T[-831190-(-831191)]]=V H=2308656464515-(-786864)y=-912547+1748801810385 e=S[T[368210-368209]]k=S[T[425409+-425407]]Z=S[T[-606636-(-606639)]]B=Z(D,y)q=k[B]Z=S[T[551888-551886]]B=S[T[-737605-(-737608)]]y=M(-667767-(-700667))D=B(y,W)k=Z[D]D=M(105462+-72539)s=12524401931987-(-172021)e[q]=k y=28313129635387-(-140613)e=S[T[-274846-(-274847)]]k=S[T[-724969+724971]]Z=S[T[-348579-(-348582)]]B=Z(D,y)q=k[B]E=-27212+8794933115467 B=M(375933+-343088)Z=U[B]D=S[T[-568946-(-568948)]]y=S[T[-931590-(-931593)]]W=y(X,s)B=D[W]k=Z[B]e[q]=k e=S[T[-258958+258959]]D=M(-767345+800052)R=18924176810482-966534 k=S[T[795605+-795603]]Z=S[T[-544980+544983]]y=34175891849975-(-670515)B=Z(D,y)q=k[B]X=M(117221+-84477)k=false e[q]=k y=M(-218465+251054)k=M(909156+-876802)q=U[k]Z=S[T[260848+-260846]]W=-223256+4393112743957 B=S[T[547726-547723]]D=B(y,W)k=Z[D]y=M(-580710-(-613175))e=q[k]W=-414604+23973775540007 Z=S[T[-469716-(-469718)]]B=S[T[349653-349650]]D=B(y,W)k=Z[D]q=e(k)k=S[T[-902576+902578]]Z=S[T[648713-648710]]D=M(-421588+454533)y=14732396826370-635958 B=Z(D,y)s=24464565972631-1032727 e=k[B]B=M(-956136-(-989093))Z=U[B]D=S[T[468161+-468159]]y=S[T[475510-475507]]W=y(X,s)s=24213726171152-107525 B=D[W]D=969447+-969127 X=M(-908303+940404)y=-137064+137064 W=917627-917227 k=Z[B]B=598746+-598746 Z=k(B,D,y,W)q[e]=Z k=S[T[-727183+727185]]Z=S[T[-120714+120717]]y=403087+30312352108692 V={}D=M(845857-813033)B=Z(D,y)e=k[B]B=M(625100+-592143)Z=U[B]D=S[T[465015-465013]]y=S[T[-233847+233850]]W=y(X,s)B=D[W]y=-969203.5-(-969204)k=Z[B]W=409290+-409490 s=773107+24612651016402 D=-426821+426661 B=-599852+599852.5 Z=k(B,D,y,W)q[e]=Z D=M(100028+-67723)k=S[T[794885-794883]]Z=S[T[358472-358469]]y=-54547+33923596882631 B=Z(D,y)P=M(-51715-(-83885))e=k[B]B=M(-893107+925550)X=M(-230547-(-263452))Z=U[B]p=568912+4294274128255 D=S[T[639853+-639851]]y=S[T[-549889-(-549892)]]W=y(X,s)B=D[W]k=Z[B]B=-5186+5206 y=-250249+250274 D=-347339+347359 Z=k(B,D,y)D=M(-684815-(-717327))q[e]=Z W=M(263333-230623)k=S[T[235534-235532]]Z=S[T[1023562-1023562?]] -- ВНИМАНИЕ: в оригинальном скрипте здесь может быть обрыв, но я копирую как есть
+]]
+
+-- Создаём GUI выбора
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game:GetService("CoreGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 300, 0, 150)
+frame.Position = UDim2.new(0.5, -150, 0.5, -75)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BackgroundTransparency = 0.2
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "Выберите скрипт"
+title.TextColor3 = Color3.new(1,1,1)
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 18
+title.Parent = frame
+
+local btnHC = Instance.new("TextButton", frame)
+btnHC.Size = UDim2.new(0, 100, 0, 40)
+btnHC.Position = UDim2.new(0.1, 0, 0.5, 10)
+btnHC.Text = "HC"
+btnHC.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+btnHC.TextColor3 = Color3.new(1,1,1)
+btnHC.Font = Enum.Font.SourceSans
+btnHC.TextSize = 20
+
+local btnSilent = Instance.new("TextButton", frame)
+btnSilent.Size = UDim2.new(0, 100, 0, 40)
+btnSilent.Position = UDim2.new(0.6, 0, 0.5, 10)
+btnSilent.Text = "Silent"
+btnSilent.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+btnSilent.TextColor3 = Color3.new(1,1,1)
+btnSilent.Font = Enum.Font.SourceSans
+btnSilent.TextSize = 20
+
+btnHC.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+    loadstring(hcScript)()
+end)
+
+btnSilent.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+    loadstring(silentScript)()
+end)
