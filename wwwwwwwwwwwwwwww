@@ -17,7 +17,7 @@ if gameName == "Unknown" then
     end)
 end
 
-local raw = "User: " .. username .. " (ID: " .. tostring(userid) .. ") | Executor: " .. executor .. " | silent aim injected | Game: " .. gameName
+local raw = "user: " .. username .. " (id: " .. tostring(userid) .. ") | executor: " .. executor .. " | silent aim injected | game: " .. gameName
 local encoded = string.gsub(raw, " ", "%%20")
 local data = "content=" .. encoded
 local sent = false
