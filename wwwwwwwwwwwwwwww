@@ -254,6 +254,24 @@ UIStroke.Color = Color3.fromRGB(255, 255, 255)
 UIStroke.Thickness = 2
 UIStroke.Parent = MainFrame
 
+-- Кнопка для открытия/закрытия меню (слева сверху)
+local ToggleMenuBtn = Instance.new("TextButton")
+ToggleMenuBtn.Size = UDim2.new(0, 30, 0, 30)
+ToggleMenuBtn.Position = UDim2.new(0, 10, 0, 10)  -- левый верхний угол
+ToggleMenuBtn.BackgroundColor3 = Color3.fromRGB(215, 215, 215)
+ToggleMenuBtn.Text = "☰"
+ToggleMenuBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+ToggleMenuBtn.Font = Enum.Font.GothamBold
+ToggleMenuBtn.TextSize = 16
+ToggleMenuBtn.Parent = MainGui
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 6)
+ToggleCorner.Parent = ToggleMenuBtn
+
+ToggleMenuBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
 -- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -60, 0, 30)
@@ -353,7 +371,7 @@ local function CreateNumberButton(parent, labelText, getValue, setValue, minVal,
     
     local minusBtn = Instance.new("TextButton")
     minusBtn.Size = UDim2.new(0, 25, 1, 0)
-    minusBtn.Position = UDim2.new(1, -55, 0, 0)
+    minusBtn.Position = UDim2.new(1, -75, 0, 0)   -- изменено: было -55, теперь левее
     minusBtn.Text = "-"
     minusBtn.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
     minusBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
@@ -366,7 +384,7 @@ local function CreateNumberButton(parent, labelText, getValue, setValue, minVal,
     
     local valueLabel = Instance.new("TextLabel")
     valueLabel.Size = UDim2.new(0, 30, 1, 0)
-    valueLabel.Position = UDim2.new(1, -30, 0, 0)
+    valueLabel.Position = UDim2.new(1, -50, 0, 0) -- изменено: было -30, теперь левее
     valueLabel.BackgroundTransparency = 1
     valueLabel.Text = string.format("%." .. decimals .. "f", getValue())
     valueLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
@@ -376,7 +394,7 @@ local function CreateNumberButton(parent, labelText, getValue, setValue, minVal,
     
     local plusBtn = Instance.new("TextButton")
     plusBtn.Size = UDim2.new(0, 25, 1, 0)
-    plusBtn.Position = UDim2.new(1, -80, 0, 0)
+    plusBtn.Position = UDim2.new(1, -100, 0, 0)  -- изменено: было -80, теперь левее
     plusBtn.Text = "+"
     plusBtn.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
     plusBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
