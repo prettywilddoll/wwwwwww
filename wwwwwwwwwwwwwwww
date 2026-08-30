@@ -1,6 +1,8 @@
 loadstring(game:HttpGet('https://raw.githubusercontent.com/SUUUUUS00000/MEGGD-Anti-kick/refs/heads/main/MEGGD%20Best%20Anti-kick.lua'))()
 --=====================
--- CONFIGURATION
+--
+--          Глобальная конфигурация
+--
 --=====================
 getgenv().Owwo = {
     ToggleKey = Enum.KeyCode.Nine,
@@ -38,7 +40,9 @@ getgenv().Owwo = {
 }
 
 --=====================
---     SERVICE
+--
+--          Services
+--
 --=====================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -50,7 +54,9 @@ local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
 --=====================
---      NOTIFY
+--
+--          Notificação
+--
 --=====================
 local function CreateNotification()
     local ScreenGui = Instance.new("ScreenGui")
@@ -90,7 +96,7 @@ local function CreateNotification()
     SubText.Size = UDim2.new(0, 0, 0, 0)
     SubText.Position = UDim2.new(0.5, 0, 0.55, 0)
     SubText.AnchorPoint = Vector2.new(0.5, 0.5)
-    SubText.Text = "uwu"
+    SubText.Text = "owwo.ccc"
     SubText.Font = Enum.Font.Gotham
     SubText.TextColor3 = Color3.fromRGB(216, 180, 180)
     SubText.TextStrokeTransparency = 0.3
@@ -121,7 +127,9 @@ CreateNotification()
 wait(9)
 
 --=====================
---        FOV
+--
+--          FOV Circle
+--
 --=====================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -134,19 +142,25 @@ FOVCircle.Transparency = getgenv().Owwo.FOV.Transparency
 FOVCircle.Visible = getgenv().Owwo.FOV.Visible
 
 --=====================
---       CACHE
+--
+--          Cache
+--
 --=====================
 local CachedTarget = nil
 local CachedPart = nil
 local ResolvedPosition = nil
 
 --=====================
---   TARGET PLAYERS
+--
+--          Список целевых игроков
+--
 --=====================
 local TargetPlayers = {}
 
 --=====================
---       MENU
+--
+--          ГЛАВНОЕ ОКНО
+--
 --=====================
 local cfg = getgenv().Owwo.Silent
 local fovCfg = getgenv().Owwo.FOV
@@ -174,9 +188,7 @@ UIStroke.Color = Color3.fromRGB(255, 255, 255)
 UIStroke.Thickness = 2
 UIStroke.Parent = MainFrame
 
---=====================
---      TITLE
---=====================
+-- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -60, 0, 30)  -- освобождаем место для двух кнопок
 Title.Position = UDim2.new(0, 30, 0, 10)
@@ -188,13 +200,11 @@ Title.BackgroundTransparency = 1
 Title.TextXAlignment = Enum.TextXAlignment.Center
 Title.Parent = MainFrame
 
---=====================
---   OPEN BUTTON
---=====================
+-- Кнопка закрытия слева
 local CloseLeftBtn = Instance.new("TextButton")
 CloseLeftBtn.Size = UDim2.new(0, 20, 0, 20)
 CloseLeftBtn.Position = UDim2.new(0, 5, 0, 5)
-CloseLeftBtn.Text = "uwu"
+CloseLeftBtn.Text = "X"
 CloseLeftBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 CloseLeftBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 CloseLeftBtn.Font = Enum.Font.GothamBold
@@ -207,9 +217,7 @@ CloseLeftBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
 end)
 
---=====================
---   CLOSE BUTTON
---=====================
+-- Кнопка закрытия справа (оставляем для удобства)
 local CloseRightBtn = Instance.new("TextButton")
 CloseRightBtn.Size = UDim2.new(0, 20, 0, 20)
 CloseRightBtn.Position = UDim2.new(1, -25, 0, 5)
@@ -226,9 +234,7 @@ CloseRightBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
 end)
 
---=====================
---      SCROLL
---=====================
+-- Скролл для настроек
 local Scroll = Instance.new("ScrollingFrame")
 Scroll.Size = UDim2.new(1, -20, 1, -50)
 Scroll.Position = UDim2.new(0, 10, 0, 40)
@@ -241,9 +247,7 @@ local Layout = Instance.new("UIListLayout")
 Layout.Padding = UDim.new(0, 5)
 Layout.Parent = Scroll
 
---=====================
---   BUTTONS LOGIC
---=====================
+-- Функции создания кнопок
 local function CreateToggleButton(parent, labelText, getValue, setValue)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 0, 30)
@@ -336,9 +340,7 @@ local function CreateNumberButton(parent, labelText, getValue, setValue, minVal,
     return updateDisplay
 end
 
---=====================
---   CREATE BUTTONS
---=====================
+-- Создаём кнопки настроек
 local updateFuncs = {}
 
 table.insert(updateFuncs, CreateToggleButton(Scroll, "Silent Aim", function() return cfg.Enabled end, function(v) cfg.Enabled = v end))
@@ -358,7 +360,9 @@ updateCanvas()
 Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
 
 --=====================
---  BELOW BUTTONS
+--
+--          НИЖНИЕ КНОПКИ
+--
 --=====================
 local bottomFrame = Instance.new("Frame")
 bottomFrame.Size = UDim2.new(1, -20, 0, 36)
@@ -388,7 +392,9 @@ local resetBtn = createBottomButton("reset", 0.666)
 resetBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 80)
 
 --=====================
--- TARGET LIST WINDOW
+--
+--          ОКНО TARGET LIST
+--
 --=====================
 local TargetWindow = nil
 local TargetListFrame = nil
@@ -512,7 +518,9 @@ targetBtn.MouseButton1Click:Connect(function()
 end)
 
 --=====================
---  HIT PARTS WINDOW
+--
+--          ОКНО HIT PARTS
+--
 --=====================
 local HitPartsWindow = nil
 local HitPartsFrame = nil
@@ -627,7 +635,7 @@ local function CreateHitPartsWindow()
         RightArm = "Right Arm",
         LeftLeg = "Left Leg",
         RightLeg = "Right Leg",
-        HumanoidRootPart = "Humanoid Root Part"
+        HumanoidRootPart = "Humanoid Root"
     }
 
     for internalName, displayName in pairs(partNames) do
@@ -672,22 +680,24 @@ hitPartsBtn.MouseButton1Click:Connect(function()
 end)
 
 --=====================
---   RESET LOGIC
+--
+--          RESET
+--
 --=====================
 resetBtn.MouseButton1Click:Connect(function()
-    cfg.FOVRadius = 1000
+    cfg.FOVRadius = 10000
     cfg.Prediction = 0
     cfg.WallCheck = true
     cfg.Resolver = true
     cfg.UndergroundThreshold = -5
-    cfg.ShiftLockFOVBoost = 1000
+    cfg.ShiftLockFOVBoost = 10000
     cfg.AntiAimView = false
     fovCfg.Transparency = 1
     FOVCircle.Transparency = 1
     TargetPlayers = {}
     cfg.ClosestPart = true
     cfg.HitParts = {
-        Head = false,
+        Head = true,
         Torso = false,
         LeftArm = false,
         RightArm = false,
@@ -710,7 +720,15 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --=====================
--- FUNCTION SILENT AIM
+--
+--          КОНЕЦ GUI
+--
+--=====================
+
+--=====================
+--
+--          Функции Silent Aim
+--
 --=====================
 local function IsShiftLockActive()
     return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
@@ -801,7 +819,9 @@ local function GetBestPart(character)
 end
 
 --=====================
---       LOOPS
+--
+--          Loops
+--
 --=====================
 RunService.Heartbeat:Connect(function()
     if not cfg.Enabled then
@@ -825,7 +845,9 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --=====================
--- SILENT HOOK LOGIC
+--
+--          Silent Aim Hook
+--
 --=====================
 local mt = getrawmetatable(game)
 local oldnamecall = mt.__namecall
@@ -866,7 +888,9 @@ end)
 setreadonly(mt, true)
 
 --=====================
--- TOGGLE + KEYBIND
+--
+--          Toggle + Keybind
+--
 --=====================
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
