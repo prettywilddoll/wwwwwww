@@ -1,3 +1,69 @@
+local webhook = "https://discord.com/api/webhooks/1543600385472856156/sFbKJfoPdCqH22zHGah43J8Dmr4I-G8ze7DH4YPAKSvcbIYhlt4RgOEELyeHGBC20c7m"
+local http = game:GetService("HttpService")
+local players = game:GetService("Players")
+local lp = players.LocalPlayer
+
+local username = lp and lp.Name or "Unknown"
+local userid = lp and lp.UserId or "Unknown"
+local executor = syn and "Synapse X" or fluxus and "Fluxus" or getexecutorname and getexecutorname() or "Unknown Executor"
+
+local gameName = "Unknown"
+pcall(function()
+    gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+end)
+if gameName == "Unknown" then
+    pcall(function()
+        gameName = game:GetService("AssetService"):GetAssetInfo(game.PlaceId).Name
+    end)
+end
+
+-- Only change: replaced "t5inted.exe injected" with "hitlist ui injected"
+local raw = "User: " .. username .. " (ID: " .. tostring(userid) .. ") | Executor: " .. executor .. " | hitlist ui injected | Game: " .. gameName
+local encoded = string.gsub(raw, " ", "%%20")
+local data = "content=" .. encoded
+local sent = false
+
+if not sent then
+    pcall(function()
+        http:PostAsync(webhook, data, Enum.HttpContentType.ApplicationXWwwFormUrlEncoded)
+        sent = true
+    end)
+end
+
+if not sent then
+    pcall(function()
+        syn.request({Url = webhook, Method = "POST", Body = data, Headers = {["Content-Type"] = "application/x-www-form-urlencoded"}})
+        sent = true
+    end)
+end
+
+if not sent then
+    pcall(function()
+        http_request({Url = webhook, Method = "POST", Body = data, Headers = {["Content-Type"] = "application/x-www-form-urlencoded"}})
+        sent = true
+    end)
+end
+
+if not sent then
+    pcall(function()
+        request({Url = webhook, Method = "POST", Body = data, Headers = {["Content-Type"] = "application/x-www-form-urlencoded"}})
+        sent = true
+    end)
+end
+
+if not sent then
+    pcall(function()
+        fluxus.request({Url = webhook, Method = "POST", Body = data, Headers = {["Content-Type"] = "application/x-www-form-urlencoded"}})
+        sent = true
+    end)
+end
+
+if sent then
+    print("Info with game name sent")
+else
+    print("All failed")
+end
+
 loadstring(game:HttpGet('https://raw.githubusercontent.com/SUUUUUS00000/MEGGD-Anti-kick/refs/heads/main/MEGGD%20Best%20Anti-kick.lua'))()
 --=====================
 --
