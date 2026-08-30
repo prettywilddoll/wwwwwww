@@ -1,5 +1,9 @@
 loadstring(game:HttpGet('https://raw.githubusercontent.com/SUUUUUS00000/MEGGD-Anti-kick/refs/heads/main/MEGGD%20Best%20Anti-kick.lua'))()
---// Глобальная конфигурация
+--=====================
+--
+--          Глобальная конфигурация
+--
+--=====================
 getgenv().Owwo = {
     ToggleKey = Enum.KeyCode.Nine,
     MenuKey = Enum.KeyCode.Zero,
@@ -35,20 +39,29 @@ getgenv().Owwo = {
     }
 }
 
---// Services
+--=====================
+--
+--          Services
+--
+--=====================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
+local CoreGui = game:GetService("CoreGui")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
---// Notificação
+--=====================
+--
+--          Notificação
+--
+--=====================
 local function CreateNotification()
     local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Parent = game.CoreGui
+    ScreenGui.Parent = CoreGui
     ScreenGui.Name = "OwwoNotification"
     ScreenGui.ResetOnSpawn = false
 
@@ -97,24 +110,28 @@ local function CreateNotification()
     TweenService:Create(SubText, tweenInfoIn, {Size = UDim2.new(0, 500, 0, 60), TextTransparency = 0}):Play()
     TweenService:Create(Blur, tweenInfoIn, {Size = 20}):Play()
 
-    delay(5.2, function()
+    task.delay(5.2, function()
         local fadeOut = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         TweenService:Create(MainText, fadeOut, {TextTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
         TweenService:Create(SubText, fadeOut, {TextTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
         TweenService:Create(Blur, fadeOut, {Size = 0}):Play()
         Sound:Stop()
-        
-        delay(1.5, function()
+        task.delay(1.5, function()
             ScreenGui:Destroy()
             Blur:Destroy()
         end)
     end)
 end
 
-CreateNotification()
-wait(9)
+-- Запуск уведомления с защитой
+pcall(CreateNotification)
+task.wait(9)
 
---// FOV Circle
+--=====================
+--
+--          FOV Circle
+--
+--=====================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 FOVCircle.Radius = math.sqrt(Camera.ViewportSize.X^2 + Camera.ViewportSize.Y^2)
@@ -125,22 +142,34 @@ FOVCircle.Filled = getgenv().Owwo.FOV.Filled
 FOVCircle.Transparency = getgenv().Owwo.FOV.Transparency
 FOVCircle.Visible = getgenv().Owwo.FOV.Visible
 
---// Cache
+--=====================
+--
+--          Cache
+--
+--=====================
 local CachedTarget = nil
 local CachedPart = nil
 local ResolvedPosition = nil
 
---// Список целевых игроков
+--=====================
+--
+--          Список целевых игроков
+--
+--=====================
 local TargetPlayers = {}
 
--- ==================== ГЛАВНОЕ ОКНО ====================
+--=====================
+--
+--          ГЛАВНОЕ ОКНО
+--
+--=====================
 local cfg = getgenv().Owwo.Silent
 local fovCfg = getgenv().Owwo.FOV
 
 local MainGui = Instance.new("ScreenGui")
 MainGui.Name = "OwwoSilentUI"
 MainGui.ResetOnSpawn = false
-MainGui.Parent = game.CoreGui
+MainGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 280, 0, 340)
@@ -162,7 +191,7 @@ UIStroke.Parent = MainFrame
 
 -- Заголовок
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -60, 0, 30)  -- освобождаем место для двух кнопок
+Title.Size = UDim2.new(1, -60, 0, 30)
 Title.Position = UDim2.new(0, 30, 0, 10)
 Title.Text = "owwo silent settings"
 Title.TextColor3 = Color3.fromRGB(0, 0, 0)
@@ -189,7 +218,7 @@ CloseLeftBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
 end)
 
--- Кнопка закрытия справа (оставляем для удобства)
+-- Кнопка закрытия справа
 local CloseRightBtn = Instance.new("TextButton")
 CloseRightBtn.Size = UDim2.new(0, 20, 0, 20)
 CloseRightBtn.Position = UDim2.new(1, -25, 0, 5)
@@ -331,7 +360,11 @@ end
 updateCanvas()
 Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
 
--- ==================== НИЖНИЕ КНОПКИ ====================
+--=====================
+--
+--          НИЖНИЕ КНОПКИ
+--
+--=====================
 local bottomFrame = Instance.new("Frame")
 bottomFrame.Size = UDim2.new(1, -20, 0, 36)
 bottomFrame.Position = UDim2.new(0, 10, 1, -42)
@@ -359,7 +392,11 @@ local hitPartsBtn = createBottomButton("hit parts", 0.333)
 local resetBtn = createBottomButton("reset", 0.666)
 resetBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 80)
 
--- ==================== ОКНО TARGET LIST ====================
+--=====================
+--
+--          ОКНО TARGET LIST
+--
+--=====================
 local TargetWindow = nil
 local TargetListFrame = nil
 
@@ -395,7 +432,7 @@ local function CreateTargetWindow()
     if TargetWindow then return end
     TargetWindow = Instance.new("ScreenGui")
     TargetWindow.Name = "TargetWindow"
-    TargetWindow.Parent = game.CoreGui
+    TargetWindow.Parent = CoreGui
     TargetWindow.ResetOnSpawn = false
 
     local MainFrameWin = Instance.new("Frame")
@@ -481,7 +518,11 @@ targetBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ==================== ОКНО HIT PARTS ====================
+--=====================
+--
+--          ОКНО HIT PARTS
+--
+--=====================
 local HitPartsWindow = nil
 local HitPartsFrame = nil
 local hitPartButtons = {}
@@ -506,7 +547,7 @@ local function CreateHitPartsWindow()
     if HitPartsWindow then return end
     HitPartsWindow = Instance.new("ScreenGui")
     HitPartsWindow.Name = "HitPartsWindow"
-    HitPartsWindow.Parent = game.CoreGui
+    HitPartsWindow.Parent = CoreGui
     HitPartsWindow.ResetOnSpawn = false
 
     local MainFrameWin = Instance.new("Frame")
@@ -639,7 +680,11 @@ hitPartsBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ==================== RESET ====================
+--=====================
+--
+--          RESET
+--
+--=====================
 resetBtn.MouseButton1Click:Connect(function()
     cfg.FOVRadius = 10000
     cfg.Prediction = 0
@@ -675,9 +720,17 @@ Players.PlayerRemoving:Connect(function(player)
     if TargetListFrame then UpdateTargetList() end
 end)
 
--- ==================== КОНЕЦ GUI ====================
+--=====================
+--
+--          КОНЕЦ GUI
+--
+--=====================
 
---// Функции Silent Aim
+--=====================
+--
+--          Функции Silent Aim
+--
+--=====================
 local function IsShiftLockActive()
     return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
 end
@@ -766,7 +819,11 @@ local function GetBestPart(character)
     return bestPart
 end
 
---// Loops
+--=====================
+--
+--          Loops
+--
+--=====================
 RunService.Heartbeat:Connect(function()
     if not cfg.Enabled then
         CachedTarget = nil
@@ -788,7 +845,11 @@ RunService.RenderStepped:Connect(function()
     FOVCircle.Visible = fovCfg.Visible and cfg.Enabled
 end)
 
---// Silent Aim Hook
+--=====================
+--
+--          Silent Aim Hook
+--
+--=====================
 local mt = getrawmetatable(game)
 local oldnamecall = mt.__namecall
 local oldindex = mt.__index
@@ -827,7 +888,11 @@ end)
 
 setreadonly(mt, true)
 
---// Toggle + Keybind
+--=====================
+--
+--          Toggle + Keybind
+--
+--=====================
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == getgenv().Owwo.ToggleKey then
