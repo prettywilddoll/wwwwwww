@@ -1,0 +1,296 @@
+/**
+ * 🌸 Розовая тема для Discord (BetterDiscord / Vencord)
+ * Версия: 1.4 (водяной знак со смещением вправо)
+ * 
+ * Водяной знак: 𖥻 ׁ ׅ aristocrat ! ﹒ ◡◡ (слева, но не перекрывает кнопки)
+ */
+
+:root {
+  --pink-primary: #ff6b9d;
+  --pink-secondary: #ff8eb5;
+  --pink-accent: #ff3b77;
+  --pink-light: #ffb3c6;
+  --pink-dark: #c2185b;
+  --bg-main: #1e1420;
+  --bg-secondary: #2a1a2e;
+  --bg-input: #2f1f33;
+  --bg-hover: #3a2640;
+  --text-primary: #f5e6f0;
+  --text-secondary: #d4b8cd;
+  --text-muted: #a07a96;
+  --border-color: #4a2e4a;
+  --shadow-color: rgba(255, 107, 157, 0.2);
+}
+
+/* ===== ВОДЯНОЙ ЗНАК (СДВИНУТ ВПРАВО, ЧТОБЫ НЕ ЗАКРЫВАТЬ КНОПКИ) ===== */
+#app-mount::before {
+  content: "𖥻 ׁ ׅ aristocrat ! ﹒ ◡◡";
+  position: fixed;
+  top: 0;
+  left: 44px;               /* ← сдвиг вправо, чтобы освободить место для кнопок */
+  padding: 8px 12px;
+  font-size: 13px;          /* чуть меньше для аккуратности */
+  font-weight: 600;
+  color: rgba(255, 107, 157, 0.18);
+  pointer-events: none;
+  z-index: 999999;
+  font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+  letter-spacing: 0.8px;
+  text-shadow: 0 0 8px rgba(255, 107, 157, 0.12);
+  user-select: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* ===== ГЛОБАЛЬНЫЕ СТИЛИ ===== */
+body, .app, .app-2CXKsg {
+  background-color: var(--bg-main) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ===== БОКОВАЯ ПАНЕЛЬ (СЕРВЕРЫ) ===== */
+.guilds-1q2Ro6 {
+  background-color: var(--bg-secondary) !important;
+}
+.guilds-1q2Ro6 .guild-2PBM6t {
+  background-color: var(--bg-input) !important;
+  transition: all 0.2s ease;
+}
+.guilds-1q2Ro6 .guild-2PBM6t:hover {
+  background-color: var(--pink-primary) !important;
+  box-shadow: 0 0 15px var(--shadow-color);
+}
+.guilds-1q2Ro6 .guild-2PBM6t .guildIcon-3Q6gDS {
+  filter: drop-shadow(0 0 5px var(--shadow-color));
+}
+
+/* ===== СПИСОК КАНАЛОВ ===== */
+.sidebar-2K8pFh {
+  background-color: var(--bg-secondary) !important;
+}
+.container-2cd8Mz {
+  background-color: var(--bg-secondary) !important;
+}
+.channel-1Shao0 {
+  color: var(--text-secondary) !important;
+}
+.channel-1Shao0:hover {
+  background-color: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+.channel-1Shao0.selected-1HYmZZ {
+  background-color: var(--pink-dark) !important;
+  color: #fff !important;
+  box-shadow: inset 3px 0 0 var(--pink-primary);
+}
+
+/* ===== ЗАГОЛОВКИ КАНАЛОВ ===== */
+.header-2V-4Sw {
+  background-color: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+.header-2V-4Sw .title-3hptVQ {
+  color: var(--pink-secondary) !important;
+}
+
+/* ===== ОБЛАСТЬ ЧАТА ===== */
+.chat-3bRxxu {
+  background-color: var(--bg-main) !important;
+}
+.messagesWrapper-2k1j1c {
+  background-color: var(--bg-main) !important;
+}
+.scrollableContainer-2cOAGa {
+  background-color: var(--bg-main) !important;
+}
+
+/* ===== СООБЩЕНИЯ ===== */
+.message-2CShn3 {
+  background-color: var(--bg-secondary) !important;
+  border-radius: 8px !important;
+  margin: 8px 0 !important;
+  padding: 8px 12px !important;
+  transition: background 0.2s;
+}
+.message-2CShn3:hover {
+  background-color: var(--bg-hover) !important;
+}
+.message-2CShn3 .author-3JH3b2 {
+  color: var(--pink-primary) !important;
+}
+.message-2CShn3 .timestamp-2yd4w0 {
+  color: var(--text-muted) !important;
+}
+.message-2CShn3 .messageContent-2t3eCI {
+  color: var(--text-primary) !important;
+}
+
+/* ===== АВАТАРКИ ===== */
+.avatar-3QFm9A {
+  border: 2px solid var(--pink-primary) !important;
+  box-shadow: 0 0 10px var(--shadow-color);
+}
+
+/* ===== ПОЛЯ ВВОДА ===== */
+.textArea-2CLwUE {
+  background-color: var(--bg-input) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 12px !important;
+  color: var(--text-primary) !important;
+}
+.textArea-2CLwUE:focus {
+  border-color: var(--pink-primary) !important;
+  box-shadow: 0 0 10px var(--shadow-color);
+}
+
+/* ===== КНОПКИ ===== */
+.button-38aScr {
+  background-color: var(--pink-primary) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 20px !important;
+  padding: 6px 16px !important;
+  transition: all 0.2s;
+}
+.button-38aScr:hover {
+  background-color: var(--pink-accent) !important;
+  transform: scale(1.02);
+  box-shadow: 0 0 15px var(--shadow-color);
+}
+.button-38aScr:active {
+  transform: scale(0.98);
+}
+
+/* ===== ССЫЛКИ ===== */
+a {
+  color: var(--pink-secondary) !important;
+}
+a:hover {
+  color: var(--pink-primary) !important;
+  text-decoration: underline;
+}
+
+/* ===== ПОЛОСА ПРОКРУТКИ ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--pink-primary);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pink-accent);
+}
+
+/* ===== ПАНЕЛЬ ПОЛЬЗОВАТЕЛЕЙ (СПРАВА) ===== */
+.members-1998pB {
+  background-color: var(--bg-secondary) !important;
+}
+.member-2gU6ht {
+  color: var(--text-secondary) !important;
+}
+.member-2gU6ht:hover {
+  background-color: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+.member-2gU6ht .userName-3t2NLb {
+  color: var(--text-primary) !important;
+}
+.member-2gU6ht .status-1iDIfh {
+  border-color: var(--pink-primary) !important;
+}
+
+/* ===== ИНДИКАТОРЫ НЕПРОЧИТАННОГО ===== */
+.unread-3zKkbm {
+  background-color: var(--pink-primary) !important;
+}
+.unread-3zKkbm .numberBadge-2R3yMY {
+  color: #fff !important;
+}
+
+/* ===== ВСПЛЫВАЮЩИЕ ОКНА (MODALS) ===== */
+.root-3yVayH {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 0 30px rgba(255, 107, 157, 0.3);
+}
+.root-3yVayH .header-1w9Q93 {
+  background-color: var(--bg-main) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--pink-secondary) !important;
+}
+.root-3yVayH .footer-1xTj0m {
+  background-color: var(--bg-main) !important;
+  border-top: 1px solid var(--border-color) !important;
+}
+
+/* ===== ВЫПАДАЮЩИЕ СПИСКИ ===== */
+.popout-2sKjHu {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 12px !important;
+}
+.popout-2sKjHu .item-3XjbnG {
+  color: var(--text-secondary) !important;
+}
+.popout-2sKjHu .item-3XjbnG:hover {
+  background-color: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ===== ПАНЕЛЬ НАСТРОЕК ===== */
+.standardSidebarView-3P3FqW {
+  background-color: var(--bg-main) !important;
+}
+.sidebarRegion-1Cc9hh {
+  background-color: var(--bg-secondary) !important;
+}
+.sidebarRegion-1Cc9hh .item-2hkk6v {
+  color: var(--text-secondary) !important;
+}
+.sidebarRegion-1Cc9hh .item-2hkk6v.selected-1h2QJI {
+  background-color: var(--pink-dark) !important;
+  color: #fff !important;
+}
+.contentRegion-3nDUYy {
+  background-color: var(--bg-main) !important;
+}
+
+/* ===== РАЗЛИЧНЫЕ УЛУЧШЕНИЯ ===== */
+* {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.spinner-3JjOHs {
+  border-color: var(--pink-primary) !important;
+}
+
+.mention-1f5kbC {
+  background-color: var(--pink-dark) !important;
+  color: #fff !important;
+  border-radius: 4px !important;
+  padding: 0 4px !important;
+}
+.mention-1f5kbC:hover {
+  background-color: var(--pink-primary) !important;
+}
+
+/* ===== АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ ЭКРАНОВ ===== */
+@media (max-width: 768px) {
+  .chat-3bRxxu {
+    background-color: var(--bg-main) !important;
+  }
+}
+
+/* ===== ДОПОЛНИТЕЛЬНО: РОЗОВАЯ ТЕНЬ ДЛЯ АВАТАРОК В ГОЛОСОВЫХ ===== */
+.avatar-1EWxX3 {
+  border: 2px solid var(--pink-primary) !important;
+  box-shadow: 0 0 12px var(--shadow-color);
+}
+
+/* ===== КОНЕЦ ТЕМЫ ===== */
