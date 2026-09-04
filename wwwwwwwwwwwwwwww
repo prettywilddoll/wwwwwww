@@ -1,436 +1,806 @@
---// Глобальная конфигурация
-getgenv().Aleh = {
-    ToggleKey = Enum.KeyCode.C,  -- Клавиша включения/выключения
-    
-    Silent = {
-        Enabled = true,           -- Включено при запуске
-        FOVRadius = 999999999999999999,        -- Огромный радиус (без ограничений)
-        Prediction = 0,        -- Предугадывание движения
-        WallCheck = true,         -- Проверка стен
-        Resolver = true,          -- Резолвер (против анти-аима)
-        UndergroundThreshold = -5, -- Порог "под землёй"
-        ShiftLockFOVBoost = 10000,  -- Множитель FOV при Shift Lock
-        AntiAimView = false       -- Скрывать Highlight при анти-аиме
-    },
-    
-    FOV = {
-        RadiusDrawing = 99999,    -- Радиус отрисовки круга (огромный)
-        Color = Color3.fromRGB(255, 255, 255),  -- Цвет круга
-        Thickness = 1,            -- Толщина (минимальная)
-        Filled = false,           -- Не залитый
-        Transparency = 1,         -- Полностью прозрачный
-        Visible = true            -- Технически видим (но прозрачность 1)
-    }
+-- OWWO.EXE — ремастер в стиле pwd char (мобильная адаптация)
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local cam = workspace.CurrentCamera
+local mouse = LocalPlayer:GetMouse()
+
+-- Определяем мобильное устройство
+local IsMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
+
+-- Цветовая тема (пастельный розовый + тёмный нейтральный)
+local Theme = {
+    AccentColor = Color3.fromRGB(255, 179, 186),
+    DimColor = Color3.fromRGB(200, 195, 195),
+    HighlightColor = Color3.fromRGB(255, 240, 245),
+    BgColor = Color3.fromRGB(30, 22, 24),
+    SectionBg = Color3.fromRGB(38, 28, 30),
+    TrayColor = Color3.fromRGB(60, 50, 52),
+    TextColor = Color3.fromRGB(235, 225, 225),
+    DimTextColor = Color3.fromRGB(85, 70, 75),
+    BorderColor = Color3.fromRGB(50, 35, 40),
+    DarkBg = Color3.fromRGB(18, 12, 14),
+    HeaderBg = Color3.fromRGB(25, 18, 20),
+    ButtonBg = Color3.fromRGB(235, 245, 250),
+    ApplyDefaultBg = Color3.fromRGB(245, 250, 253),
+    ApplyBorder = Color3.fromRGB(215, 230, 240),
+    ApplyDefaultText = Color3.fromRGB(165, 200, 220),
+    ApplyActiveBg = Color3.fromRGB(160, 165, 175),
+    ApplyActiveText = Color3.fromRGB(255, 255, 255)
 }
 
---// Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
-local Camera = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
+-- Глобальные настройки
+if _G.SilentAim_Enabled == nil then _G.SilentAim_Enabled = false end
+if _G.FOV_RADIUS == nil then _G.FOV_RADIUS = 300 end
+if _G.WallCheck == nil then _G.WallCheck = false end
+if _G.KnockCheck == nil then _G.KnockCheck = false end
+if _G.RevolverBypass == nil then _G.RevolverBypass = false end
+if _G.UIVisible == nil then _G.UIVisible = true end
+_G.UIToggleKey = Enum.KeyCode.RightShift
 
---// Notificação ALEH.CCC (PAID)
-local function CreateNotification()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Parent = game.CoreGui
-    ScreenGui.Name = "AlehNotification"
-    ScreenGui.ResetOnSpawn = false
+-- Delay Changer
+if _G.DelayChangerEnabled == nil then _G.DelayChangerEnabled = false end
+if _G.DelayChangerRevolver == nil then _G.DelayChangerRevolver = 0.03 end
+if _G.DelayChangerDoubleBarrel == nil then _G.DelayChangerDoubleBarrel = 0.3 end
+if _G.DelayChangerTacticalShotgun == nil then _G.DelayChangerTacticalShotgun = 0.0 end
+if _G.DelayChangerOthers == nil then _G.DelayChangerOthers = 0.095 end
 
-    local Blur = Instance.new("BlurEffect")
-    Blur.Size = 0
-    Blur.Parent = Lighting
+-- Speed
+if _G.SpeedMaster == nil then _G.SpeedMaster = false end
+if _G.SpeedActive == nil then _G.SpeedActive = false end
+if _G.SpeedValue == nil then _G.SpeedValue = 50 end
+if _G.SpeedKey == nil then _G.SpeedKey = Enum.KeyCode.X end
 
-    local Sound = Instance.new("Sound")
-    Sound.SoundId = "rbxassetid://127343223839315"
-    Sound.Volume = 0.9
-    Sound.Looped = false
-    Sound.TimePosition = 3
-    Sound.Parent = ScreenGui
-    Sound:Play()
+-- Удаление старого GUI
+local targetParent = (gethui and gethui()) or CoreGui or PlayerGui
+if targetParent:FindFirstChild("OWWOInterface") then
+    targetParent.OWWOInterface:Destroy()
+end
 
-    local MainText = Instance.new("TextLabel")
-    MainText.Parent = ScreenGui
-    MainText.BackgroundTransparency = 1
-    MainText.Size = UDim2.new(0, 0, 0, 0)
-    MainText.Position = UDim2.new(0.5, 0, 0.45, 0)
-    MainText.AnchorPoint = Vector2.new(0.5, 0.5)
-    MainText.Text = "candy silent aim"
-    MainText.Font = Enum.Font.GothamBold
-    MainText.TextColor3 = Color3.fromRGB(216, 180, 180)
-    MainText.TextStrokeTransparency = 0
-    MainText.TextStrokeColor3 = Color3.fromRGB(216, 180, 180)
-    MainText.TextSize = 70
-    MainText.TextTransparency = 1
+-- Создание основного GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "OWWOInterface"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = targetParent
 
-    local SubText = Instance.new("TextLabel")
-    SubText.Parent = ScreenGui
-    SubText.BackgroundTransparency = 1
-    SubText.Size = UDim2.new(0, 0, 0, 0)
-    SubText.Position = UDim2.new(0.5, 0, 0.55, 0)
-    SubText.AnchorPoint = Vector2.new(0.5, 0.5)
-    SubText.Text = "/SBd8nXsKMM"
-    SubText.Font = Enum.Font.Gotham
-    SubText.TextColor3 = Color3.fromRGB(216, 180, 180)
-    SubText.TextStrokeTransparency = 0.3
-    SubText.TextStrokeColor3 = Color3.fromRGB(216, 180, 180)
-    SubText.TextSize = 40
-    SubText.TextTransparency = 1
+-- Мобильная кнопка (увеличена)
+local MobileToggleBtn
+if IsMobile then
+    MobileToggleBtn = Instance.new("ImageButton")
+    MobileToggleBtn.Name = "MobileToggleBtn"
+    MobileToggleBtn.Size = UDim2.new(0, 60, 0, 60)          -- увеличен размер
+    MobileToggleBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
+    MobileToggleBtn.BackgroundColor3 = Theme.HeaderBg
+    MobileToggleBtn.BorderColor3 = Theme.AccentColor
+    MobileToggleBtn.BorderSizePixel = 3
+    MobileToggleBtn.Image = "rbxassetid://81412927404972"
+    MobileToggleBtn.ScaleType = Enum.ScaleType.Fit
+    MobileToggleBtn.ZIndex = 100
+    MobileToggleBtn.Parent = ScreenGui
 
-    local tweenInfoIn = TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-    TweenService:Create(MainText, tweenInfoIn, {Size = UDim2.new(0, 800, 0, 100), TextTransparency = 0}):Play()
-    TweenService:Create(SubText, tweenInfoIn, {Size = UDim2.new(0, 500, 0, 60), TextTransparency = 0}):Play()
-    TweenService:Create(Blur, tweenInfoIn, {Size = 20}):Play()
+    local MobileBtnCorner = Instance.new("UICorner")
+    MobileBtnCorner.CornerRadius = UDim.new(1, 0)
+    MobileBtnCorner.Parent = MobileToggleBtn
 
-    delay(5.2, function()
-        local fadeOut = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        TweenService:Create(MainText, fadeOut, {TextTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
-        TweenService:Create(SubText, fadeOut, {TextTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
-        TweenService:Create(Blur, fadeOut, {Size = 0}):Play()
-        Sound:Stop()
-        
-        delay(1.5, function()
-            ScreenGui:Destroy()
-            Blur:Destroy()
-        end)
+    local mDragging, mDragStart, mStartPos
+    MobileToggleBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            mDragging = true
+            mDragStart = input.Position
+            mStartPos = MobileToggleBtn.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then mDragging = false end
+            end)
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if mDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - mDragStart
+            MobileToggleBtn.Position = UDim2.new(mStartPos.Width.Scale, mStartPos.Width.Offset + delta.X, mStartPos.Height.Scale, mStartPos.Height.Offset + delta.Y)
+        end
     end)
 end
 
-CreateNotification()
-wait(9)
+-- Размеры окна в зависимости от платформы
+local WindowSize
+local ElementHeight
+local FontSize
+local SliderHeight
+local PaddingSize
 
---// FOV Circle (прозрачный и на весь экран)
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-FOVCircle.Radius = math.sqrt(Camera.ViewportSize.X^2 + Camera.ViewportSize.Y^2)
-FOVCircle.Color = getgenv().Aleh.FOV.Color
-FOVCircle.Thickness = getgenv().Aleh.FOV.Thickness
-FOVCircle.NumSides = 100
-FOVCircle.Filled = getgenv().Aleh.FOV.Filled
-FOVCircle.Transparency = getgenv().Aleh.FOV.Transparency
-FOVCircle.Visible = getgenv().Aleh.FOV.Visible
-
---// Highlight (ОТКЛЮЧЕН)
--- local Highlight = Instance.new("Highlight")
--- Highlight.FillColor = getgenv().Aleh.FOV.Color
--- Highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
--- Highlight.FillTransparency = 0.4
--- Highlight.OutlineTransparency = 0
--- Highlight.Parent = game.CoreGui
-
---// Cache
-local CachedTarget = nil
-local CachedPart = nil
-local ResolvedPosition = nil
-
---// Lista de jogadores ignorados
-local IgnoredPlayers = {}
-
---// Menu de jogadores ignorados
-local IgnoreMenu = nil
-local IgnoreListFrame = nil
-local function CreateIgnoreMenu()
-    if IgnoreMenu then return end
-    IgnoreMenu = Instance.new("ScreenGui")
-    IgnoreMenu.Name = "IgnoreMenu"
-    IgnoreMenu.Parent = game.CoreGui
-    IgnoreMenu.ResetOnSpawn = false
-    IgnoreMenu.Enabled = false
-
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 220, 0, 300)
-    MainFrame.Position = UDim2.new(1, -240, 0, 100)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Active = true
-    MainFrame.Draggable = true
-    MainFrame.Parent = IgnoreMenu
-
-    local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, 0, 0, 30)
-    Title.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    Title.BorderSizePixel = 0
-    Title.Text = "Ignorados (F3)"
-    Title.Font = Enum.Font.GothamBold
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.TextSize = 14
-    Title.Parent = MainFrame
-
-    local ScrollingFrame = Instance.new("ScrollingFrame")
-    ScrollingFrame.Size = UDim2.new(1, 0, 1, -30)
-    ScrollingFrame.Position = UDim2.new(0, 0, 0, 30)
-    ScrollingFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    ScrollingFrame.BorderSizePixel = 0
-    ScrollingFrame.ScrollBarThickness = 4
-    ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    ScrollingFrame.Parent = MainFrame
-
-    local UIListLayout = Instance.new("UIListLayout")
-    UIListLayout.Parent = ScrollingFrame
-    UIListLayout.SortOrder = Enum.SortOrder.Name
-    UIListLayout.Padding = UDim.new(0, 2)
-
-    IgnoreListFrame = ScrollingFrame
+if IsMobile then
+    WindowSize = UDim2.new(0.9, 0, 0.85, 0)          -- почти на весь экран
+    ElementHeight = 40                               -- высота строки
+    FontSize = 16
+    SliderHeight = 8                                 -- толщина слайдера
+    PaddingSize = 20
+else
+    WindowSize = UDim2.new(0, 520, 0, 500)
+    ElementHeight = 18
+    FontSize = 11
+    SliderHeight = 4
+    PaddingSize = 20
 end
 
-local function UpdateIgnoreList()
-    if not IgnoreListFrame then return end
-    for _, child in ipairs(IgnoreListFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
+-- Окно
+local WindowOuterBorder = Instance.new("Frame")
+WindowOuterBorder.Name = "WindowOuterBorder"
+WindowOuterBorder.Size = WindowSize
+WindowOuterBorder.Position = UDim2.new(0.5, -WindowSize.X.Offset/2, 0.5, -WindowSize.Y.Offset/2)
+if IsMobile then
+    WindowOuterBorder.Position = UDim2.new(0.5, -WindowSize.X.Offset/2, 0.5, -WindowSize.Y.Offset/2)  -- центрирование по масштабу
+end
+WindowOuterBorder.BackgroundColor3 = Theme.TrayColor
+WindowOuterBorder.BorderSizePixel = 0
+WindowOuterBorder.Active = true
+WindowOuterBorder.ClipsDescendants = true
+WindowOuterBorder.Parent = ScreenGui
+
+local OuterCorner = Instance.new("UICorner")
+OuterCorner.CornerRadius = UDim.new(0, 10)
+OuterCorner.Parent = WindowOuterBorder
+
+local InnerSpacer = Instance.new("Frame")
+InnerSpacer.Name = "InnerSpacer"
+InnerSpacer.Size = UDim2.new(1, -2, 1, -2)
+InnerSpacer.Position = UDim2.new(0, 1, 0, 1)
+InnerSpacer.BackgroundColor3 = Theme.DarkBg
+InnerSpacer.BorderSizePixel = 0
+InnerSpacer.ClipsDescendants = true
+InnerSpacer.Parent = WindowOuterBorder
+
+local InnerCorner = Instance.new("UICorner")
+InnerCorner.CornerRadius = UDim.new(0, 9)
+InnerCorner.Parent = InnerSpacer
+
+local MainBody = Instance.new("Frame")
+MainBody.Name = "MainBody"
+MainBody.Size = UDim2.new(1, -2, 1, -2)
+MainBody.Position = UDim2.new(0, 1, 0, 1)
+MainBody.BackgroundColor3 = Theme.BgColor
+MainBody.BorderColor3 = Theme.BorderColor
+MainBody.BorderSizePixel = 1
+MainBody.ClipsDescendants = true
+MainBody.Parent = InnerSpacer
+
+local BodyCorner = Instance.new("UICorner")
+BodyCorner.CornerRadius = UDim.new(0, 8)
+BodyCorner.Parent = MainBody
+
+-- Заголовок (без кнопки закрытия)
+local HeaderBar = Instance.new("Frame")
+HeaderBar.Name = "HeaderBar"
+local HeaderHeight = IsMobile and 48 or 32
+HeaderBar.Size = UDim2.new(1, 0, 0, HeaderHeight)
+HeaderBar.BackgroundColor3 = Theme.HeaderBg
+HeaderBar.BorderSizePixel = 0
+HeaderBar.ZIndex = 5
+HeaderBar.Parent = MainBody
+
+local HeaderCorner = Instance.new("UICorner")
+HeaderCorner.CornerRadius = UDim.new(0, 8)
+HeaderCorner.Parent = HeaderBar
+
+local CinnamorollIcon = Instance.new("ImageLabel")
+CinnamorollIcon.Size = UDim2.new(0, IsMobile and 32 or 22, 0, IsMobile and 32 or 22)
+CinnamorollIcon.Position = UDim2.new(0, IsMobile and 15 or 10, 0.5, -CinnamorollIcon.Size.Y.Offset/2)
+CinnamorollIcon.BackgroundTransparency = 1
+CinnamorollIcon.Image = "rbxassetid://125352551065873"
+CinnamorollIcon.ScaleType = Enum.ScaleType.Fit
+CinnamorollIcon.ZIndex = 10
+CinnamorollIcon.Parent = HeaderBar
+
+local TitleText = Instance.new("TextLabel")
+TitleText.Name = "TitleText"
+TitleText.Size = UDim2.new(0.5, 0, 1, 0)
+TitleText.Position = UDim2.new(0, IsMobile and 55 or 38, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.Text = "owwo.exe"
+TitleText.TextColor3 = Theme.TextColor
+TitleText.TextSize = IsMobile and 20 or 13
+TitleText.Font = Enum.Font.RobotoMono
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.ZIndex = 6
+TitleText.Parent = HeaderBar
+
+local DateText = Instance.new("TextLabel")
+DateText.Name = "DateText"
+DateText.Size = UDim2.new(0.5, 0, 1, 0)
+DateText.Position = UDim2.new(0.5, -15, 0, 0)
+DateText.BackgroundTransparency = 1
+DateText.Text = ""
+DateText.TextColor3 = Theme.DimTextColor
+DateText.TextSize = IsMobile and 14 or 11
+DateText.Font = Enum.Font.RobotoMono
+DateText.TextXAlignment = Enum.TextXAlignment.Right
+DateText.ZIndex = 6
+DateText.Parent = HeaderBar
+
+local function updateClock()
+    DateText.Text = os.date("%A, %d %B, %y")
+end
+updateClock()
+task.spawn(function()
+    while task.wait(60) do updateClock() end
+end)
+
+-- Акцентная полоса
+local PinkLineAccent = Instance.new("Frame")
+PinkLineAccent.Name = "PinkLineAccent"
+PinkLineAccent.Size = UDim2.new(1, 0, 0, 2)
+PinkLineAccent.Position = UDim2.new(0, 0, 1, 0)
+PinkLineAccent.BackgroundColor3 = Theme.AccentColor
+PinkLineAccent.BorderSizePixel = 0
+PinkLineAccent.ZIndex = 10
+PinkLineAccent.Parent = HeaderBar
+
+local PinkHeaderGlow = Instance.new("Frame")
+PinkHeaderGlow.Size = UDim2.new(1, 0, 0, 20)
+PinkHeaderGlow.Position = UDim2.new(0, 0, 1, 2)
+PinkHeaderGlow.BackgroundColor3 = Theme.AccentColor
+PinkHeaderGlow.BorderSizePixel = 0
+PinkHeaderGlow.ZIndex = 4
+PinkHeaderGlow.Parent = HeaderBar
+
+local GlowGradient = Instance.new("UIGradient")
+GlowGradient.Rotation = 90
+GlowGradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.60),
+    NumberSequenceKeypoint.new(0.5, 0.85),
+    NumberSequenceKeypoint.new(1, 1)
+})
+GlowGradient.Parent = PinkHeaderGlow
+
+-- Перетаскивание окна
+local dragging, dragInput, dragStart, startPos
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    WindowOuterBorder.Position = UDim2.new(startPos.Width.Scale, startPos.Width.Offset + delta.X, startPos.Height.Scale, startPos.Height.Offset + delta.Y)
+end
+
+HeaderBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = WindowOuterBorder.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+HeaderBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+UIS.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then updateDrag(input) end
+end)
+
+-- Основной контент (без боковой панели на мобильных)
+local LayoutContent = Instance.new("Frame")
+LayoutContent.Name = "LayoutContent"
+LayoutContent.Size = UDim2.new(1, 0, 1, -HeaderHeight)
+LayoutContent.Position = UDim2.new(0, 0, 0, HeaderHeight)
+LayoutContent.BackgroundTransparency = 1
+LayoutContent.ClipsDescendants = true
+LayoutContent.ZIndex = 2
+LayoutContent.Parent = MainBody
+
+local WorkspaceFrame
+if IsMobile then
+    -- На мобильных боковая панель не нужна, вся ширина отдаётся контенту
+    WorkspaceFrame = Instance.new("Frame")
+    WorkspaceFrame.Name = "WorkspaceFrame"
+    WorkspaceFrame.Size = UDim2.new(1, 0, 1, 0)
+    WorkspaceFrame.Position = UDim2.new(0, 0, 0, 0)
+    WorkspaceFrame.BackgroundTransparency = 1
+    WorkspaceFrame.ZIndex = 3
+    WorkspaceFrame.Parent = LayoutContent
+
+    local ContainerPadding = Instance.new("UIPadding")
+    ContainerPadding.PaddingTop = UDim.new(0, IsMobile and 15 or 20)
+    ContainerPadding.PaddingLeft = UDim.new(0, IsMobile and 20 or 20)
+    ContainerPadding.PaddingRight = UDim.new(0, IsMobile and 20 or 20)
+    ContainerPadding.PaddingBottom = UDim.new(0, IsMobile and 15 or 20)
+    ContainerPadding.Parent = WorkspaceFrame
+
+    local UIList = Instance.new("UIListLayout")
+    UIList.SortOrder = Enum.SortOrder.LayoutOrder
+    UIList.Padding = UDim.new(0, IsMobile and 20 or 14)
+    UIList.Parent = WorkspaceFrame
+else
+    -- Для ПК оставляем как было (с боковой панелью)
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Name = "Sidebar"
+    Sidebar.Size = UDim2.new(0, 120, 1, 0)
+    Sidebar.BackgroundColor3 = Theme.BgColor
+    Sidebar.BorderColor3 = Theme.BorderColor
+    Sidebar.BorderSizePixel = 1
+    Sidebar.ZIndex = 3
+    Sidebar.Parent = LayoutContent
+
+    local SidebarTab = Instance.new("TextButton")
+    SidebarTab.Size = UDim2.new(1, -16, 0, 24)
+    SidebarTab.Position = UDim2.new(0, 12, 0, 15)
+    SidebarTab.BackgroundTransparency = 1
+    SidebarTab.Text = "lock"
+    SidebarTab.TextColor3 = Theme.AccentColor
+    SidebarTab.Font = Enum.Font.RobotoMono
+    SidebarTab.TextSize = 12
+    SidebarTab.TextXAlignment = Enum.TextXAlignment.Left
+    SidebarTab.Parent = Sidebar
+
+    local SidebarDivider = Instance.new("Frame")
+    SidebarDivider.Size = UDim2.new(0, 1, 1, 0)
+    SidebarDivider.Position = UDim2.new(1, -1, 0, 0)
+    SidebarDivider.BackgroundColor3 = Theme.BorderColor
+    SidebarDivider.BorderSizePixel = 0
+    SidebarDivider.Parent = Sidebar
+
+    WorkspaceFrame = Instance.new("Frame")
+    WorkspaceFrame.Name = "WorkspaceFrame"
+    WorkspaceFrame.Size = UDim2.new(1, -120, 1, 0)
+    WorkspaceFrame.Position = UDim2.new(0, 120, 0, 0)
+    WorkspaceFrame.BackgroundTransparency = 1
+    WorkspaceFrame.ZIndex = 3
+    WorkspaceFrame.Parent = LayoutContent
+
+    local ContainerPadding = Instance.new("UIPadding")
+    ContainerPadding.PaddingTop = UDim.new(0, 20)
+    ContainerPadding.PaddingLeft = UDim.new(0, 20)
+    ContainerPadding.PaddingRight = UDim.new(0, 20)
+    ContainerPadding.PaddingBottom = UDim.new(0, 20)
+    ContainerPadding.Parent = WorkspaceFrame
+
+    local UIList = Instance.new("UIListLayout")
+    UIList.SortOrder = Enum.SortOrder.LayoutOrder
+    UIList.Padding = UDim.new(0, 14)
+    UIList.Parent = WorkspaceFrame
+end
+
+-- Вспомогательные функции (адаптированы под мобильные)
+-- Toggle
+local function CreateToggle(parent, text, defaultState, callback)
+    local Row = Instance.new("Frame", parent)
+    Row.Size = UDim2.new(1, 0, 0, ElementHeight)
+    Row.BackgroundTransparency = 1
+
+    local BoxSize = IsMobile and 24 or 12
+    local Box = Instance.new("TextButton", Row)
+    Box.Size = UDim2.new(0, BoxSize, 0, BoxSize)
+    Box.Position = UDim2.new(0, 0, 0.5, -BoxSize/2)
+    Box.BackgroundColor3 = defaultState and Theme.AccentColor or Theme.ButtonBg
+    Box.BorderColor3 = defaultState and Theme.AccentColor or Theme.BorderColor
+    Box.BorderSizePixel = 1
+    Box.Text = ""
+
+    local Lbl = Instance.new("TextLabel", Row)
+    Lbl.Size = UDim2.new(1, -(BoxSize + 8), 1, 0)
+    Lbl.Position = UDim2.new(0, BoxSize + 8, 0, 0)
+    Lbl.BackgroundTransparency = 1
+    Lbl.Text = text
+    Lbl.TextColor3 = defaultState and Theme.TextColor or Theme.DimTextColor
+    Lbl.TextSize = FontSize
+    Lbl.Font = Enum.Font.RobotoMono
+    Lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local state = defaultState
+    local function updateState(newState)
+        state = newState
+        Box.BackgroundColor3 = state and Theme.AccentColor or Theme.ButtonBg
+        Box.BorderColor3 = state and Theme.AccentColor or Theme.BorderColor
+        Lbl.TextColor3 = state and Theme.TextColor or Theme.DimTextColor
     end
 
-    local players = Players:GetPlayers()
-    local ySize = 0
-    for _, player in ipairs(players) do
-        if player ~= LocalPlayer then
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, -4, 0, 28)
-            button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            button.BorderSizePixel = 0
-            button.Text = player.Name
-            button.Font = Enum.Font.Gotham
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.TextSize = 12
-            button.AutoButtonColor = false
+    Box.MouseButton1Click:Connect(function()
+        updateState(not state)
+        callback(state)
+    end)
 
-            local isIgnored = IgnoredPlayers[player] or false
-            if isIgnored then
-                button.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
-                button.Text = player.Name .. " [X]"
-            else
-                button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-                button.Text = player.Name
-            end
+    return updateState
+end
 
-            button.MouseButton1Click:Connect(function()
-                if IgnoredPlayers[player] then
-                    IgnoredPlayers[player] = nil
-                else
-                    IgnoredPlayers[player] = true
+-- Slider
+local function CreateSlider(parent, name, minVal, maxVal, get, set, isFloat)
+    local Row = Instance.new("Frame", parent)
+    Row.Size = UDim2.new(1, 0, 0, ElementHeight + (IsMobile and 10 or 0))  -- чуть выше для слайдера
+    Row.BackgroundTransparency = 1
+
+    local Lbl = Instance.new("TextLabel", Row)
+    Lbl.Size = UDim2.new(1, -70, 0, ElementHeight * 0.6)
+    Lbl.BackgroundTransparency = 1
+    local currentVal = get()
+    Lbl.Text = name .. ": " .. (isFloat and string.format("%.3f", currentVal) or tostring(math.floor(currentVal + 0.5)))
+    Lbl.TextColor3 = Theme.DimTextColor
+    Lbl.TextSize = FontSize
+    Lbl.Font = Enum.Font.RobotoMono
+    Lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local InputBox = Instance.new("TextBox", Row)
+    local BoxWidth = IsMobile and 60 or 45
+    InputBox.Size = UDim2.new(0, BoxWidth, 0, ElementHeight * 0.7)
+    InputBox.Position = UDim2.new(1, -BoxWidth, 0, 0)
+    InputBox.BackgroundColor3 = Theme.ButtonBg
+    InputBox.BorderColor3 = Theme.BorderColor
+    InputBox.Text = isFloat and string.format("%.3f", currentVal) or tostring(math.floor(currentVal + 0.5))
+    InputBox.TextColor3 = Theme.TextColor
+    InputBox.Font = Enum.Font.RobotoMono
+    InputBox.TextSize = FontSize
+    InputBox.TextXAlignment = Enum.TextXAlignment.Center
+
+    local Track = Instance.new("Frame", Row)
+    Track.Size = UDim2.new(1, 0, 0, SliderHeight)
+    Track.Position = UDim2.new(0, 0, 0, ElementHeight * 0.75)
+    Track.BackgroundColor3 = Theme.DarkBg
+    Track.BorderColor3 = Theme.BorderColor
+    Track.BorderSizePixel = 1
+
+    local TrackCorner = Instance.new("UICorner", Track)
+    TrackCorner.CornerRadius = UDim.new(0, 2)
+
+    local Fill = Instance.new("Frame", Track)
+    local startPct = math.clamp((currentVal - minVal) / (maxVal - minVal), 0, 1)
+    Fill.Size = UDim2.new(startPct, 0, 1, 0)
+    Fill.BackgroundColor3 = Theme.AccentColor
+    Fill.BorderSizePixel = 0
+
+    local FillCorner = Instance.new("UICorner", Fill)
+    FillCorner.CornerRadius = UDim.new(0, 2)
+
+    local DragBtn = Instance.new("TextButton", Track)
+    local DragSize = IsMobile and 12 or 6
+    DragBtn.Size = UDim2.new(0, DragSize, 0, DragSize + 4)
+    DragBtn.Position = UDim2.new(startPct, -DragSize/2, 0.5, -(DragSize+4)/2)
+    DragBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    DragBtn.BorderColor3 = Theme.AccentColor
+    DragBtn.BorderSizePixel = 1
+    DragBtn.Text = ""
+
+    local function updateVisual(val)
+        val = math.clamp(val, minVal, maxVal)
+        if not isFloat then val = math.floor(val + 0.5) end
+        local pct = (val - minVal) / (maxVal - minVal)
+        Fill.Size = UDim2.new(pct, 0, 1, 0)
+        DragBtn.Position = UDim2.new(pct, -DragSize/2, 0.5, -(DragSize+4)/2)
+        local display = isFloat and string.format("%.3f", val) or tostring(math.floor(val + 0.5))
+        Lbl.Text = name .. ": " .. display
+        InputBox.Text = display
+        set(val)
+    end
+
+    local sliding = false
+    local function updateFromInput(input)
+        local abs = Track.AbsoluteSize.X
+        if abs < 1 then return end
+        local p = math.clamp((input.Position.X - Track.AbsolutePosition.X) / abs, 0, 1)
+        local val = minVal + p * (maxVal - minVal)
+        updateVisual(val)
+    end
+
+    DragBtn.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            sliding = true
+        end
+    end)
+    Track.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            sliding = true
+            updateFromInput(i)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            sliding = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if sliding and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            updateFromInput(i)
+        end
+    end)
+
+    InputBox.FocusLost:Connect(function()
+        local val = tonumber(InputBox.Text)
+        if val then updateVisual(val) else updateVisual(get()) end
+    end)
+    InputBox.InputEnded:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.Return then
+            local val = tonumber(InputBox.Text)
+            if val then updateVisual(val) else updateVisual(get()) end
+        end
+    end)
+end
+
+-- Keybind (для мобильных заменён на Toggle "Speed Active")
+local keybindListeners = {}
+local function CreateKeybind(parent, text, currentKey, callback)
+    if IsMobile then
+        -- На мобильных вместо привязки клавиши создаём переключатель для SpeedActive
+        local function dummy(v)
+            _G.SpeedActive = v
+            -- Можно также обновить callback, если нужен
+        end
+        return CreateToggle(parent, "Speed Active", _G.SpeedActive, function(v)
+            _G.SpeedActive = v
+        end)
+    else
+        local Row = Instance.new("Frame", parent)
+        Row.Size = UDim2.new(1, 0, 0, ElementHeight)
+        Row.BackgroundTransparency = 1
+
+        local Lbl = Instance.new("TextLabel", Row)
+        Lbl.Size = UDim2.new(0.6, 0, 1, 0)
+        Lbl.BackgroundTransparency = 1
+        Lbl.Text = text
+        Lbl.TextColor3 = Theme.DimTextColor
+        Lbl.Font = Enum.Font.RobotoMono
+        Lbl.TextSize = FontSize
+        Lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        local BBtn = Instance.new("TextButton", Row)
+        BBtn.Size = UDim2.new(0.4, 0, 1, 0)
+        BBtn.Position = UDim2.new(0.6, 0, 0, 0)
+        BBtn.BackgroundColor3 = Theme.ButtonBg
+        BBtn.BorderColor3 = Theme.BorderColor
+        BBtn.Text = "[" .. currentKey.Name .. "]"
+        BBtn.TextColor3 = Theme.DimColor
+        BBtn.Font = Enum.Font.RobotoMono
+        BBtn.TextSize = FontSize
+
+        local listenerState = { listening = false, button = BBtn, callback = callback }
+        BBtn.MouseButton1Click:Connect(function()
+            for _, state in ipairs(keybindListeners) do state.listening = false end
+            listenerState.listening = true
+            BBtn.Text = "..."
+        end)
+
+        table.insert(keybindListeners, listenerState)
+        if #keybindListeners == 1 then
+            UIS.InputBegan:Connect(function(io)
+                if io.UserInputType ~= Enum.UserInputType.Keyboard then return end
+                for _, state in ipairs(keybindListeners) do
+                    if state.listening then
+                        state.listening = false
+                        state.button.Text = "[" .. io.KeyCode.Name .. "]"
+                        state.callback(io.KeyCode)
+                        break
+                    end
                 end
-                UpdateIgnoreList()
             end)
-
-            button.Parent = IgnoreListFrame
-            ySize = ySize + 30
         end
     end
-
-    IgnoreListFrame.CanvasSize = UDim2.new(0, 0, 0, ySize)
 end
 
-Players.PlayerAdded:Connect(function(player)
-    if IgnoreListFrame then
-        UpdateIgnoreList()
+-- Создание элементов управления
+CreateToggle(WorkspaceFrame, "Silent Aim", _G.SilentAim_Enabled, function(v) _G.SilentAim_Enabled = v end)
+CreateSlider(WorkspaceFrame, "FOV Radius", 0, 1000, function() return _G.FOV_RADIUS end, function(v) _G.FOV_RADIUS = v end, false)
+CreateToggle(WorkspaceFrame, "Wall Check", _G.WallCheck, function(v) _G.WallCheck = v end)
+CreateToggle(WorkspaceFrame, "Knock Check", _G.KnockCheck, function(v) _G.KnockCheck = v end)
+CreateToggle(WorkspaceFrame, "Revolver Bypass", _G.RevolverBypass, function(v) _G.RevolverBypass = v end)
+
+-- Delay Changer
+CreateToggle(WorkspaceFrame, "Delay Changer", _G.DelayChangerEnabled, function(v) _G.DelayChangerEnabled = v end)
+CreateSlider(WorkspaceFrame, "[Revolver] Delay", 0, 0.5, function() return _G.DelayChangerRevolver end, function(v) _G.DelayChangerRevolver = v end, true)
+CreateSlider(WorkspaceFrame, "[Double-Barrel SG] Delay", 0, 0.5, function() return _G.DelayChangerDoubleBarrel end, function(v) _G.DelayChangerDoubleBarrel = v end, true)
+CreateSlider(WorkspaceFrame, "[TacticalShotgun] Delay", 0, 0.5, function() return _G.DelayChangerTacticalShotgun end, function(v) _G.DelayChangerTacticalShotgun = v end, true)
+CreateSlider(WorkspaceFrame, "Others Delay", 0, 0.5, function() return _G.DelayChangerOthers end, function(v) _G.DelayChangerOthers = v end, true)
+
+-- Speed
+CreateToggle(WorkspaceFrame, "Speed Master", _G.SpeedMaster, function(v)
+    _G.SpeedMaster = v
+    if not _G.SpeedMaster then
+        _G.SpeedActive = false
+    else
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Speed Master", Text = "Respawn to apply speed changes!", Duration = 3 })
+        end)
     end
 end)
-Players.PlayerRemoving:Connect(function(player)
-    IgnoredPlayers[player] = nil
-    if IgnoreListFrame then
-        UpdateIgnoreList()
-    end
+CreateKeybind(WorkspaceFrame, "Speed Key", _G.SpeedKey, function(k) _G.SpeedKey = k end)
+CreateSlider(WorkspaceFrame, "Speed Value", 16, 1000, function() return _G.SpeedValue end, function(v) _G.SpeedValue = v end, false)
+
+-- Show UI
+local updateShowUIToggle = CreateToggle(WorkspaceFrame, "Show UI", _G.UIVisible, function(v)
+    _G.UIVisible = v
+    WindowOuterBorder.Visible = _G.UIVisible
 end)
 
-CreateIgnoreMenu()
-
---// Funções
-local function IsShiftLockActive()
-    return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+-- Управление горячей клавишей (правая Shift) – для мобильных только через кнопку
+local function toggleUIState()
+    _G.UIVisible = not _G.UIVisible
+    WindowOuterBorder.Visible = _G.UIVisible
+    updateShowUIToggle(_G.UIVisible)
 end
 
-local function IsPlayerDownedOrDead(player)
-    local character = player.Character
-    if not character then return true end
-
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not humanoid or not root then return true end
-
-    if humanoid.Health <= 0 then return true end
-    if character:FindFirstChild("Downed") or humanoid:FindFirstChild("Downed") then return true end
-
-    local state = humanoid:GetState()
-    if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.Ragdoll or state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.FallingDown or state == Enum.HumanoidStateType.PlatformStanding then return true end
-
-    if humanoid.PlatformStand then return true end
-
-    if root.Position.Y < workspace.Terrain.MaxExtents.Min.Y + 12 or root.Position.Y < -5 then return true end
-
-    if (character:FindFirstChild("BodyPosition") or character:FindFirstChild("BodyGyro")) and root.Velocity.Magnitude < 8 then return true end
-
-    return false
+if IsMobile then
+    MobileToggleBtn.MouseButton1Click:Connect(function()
+        toggleUIState()
+    end)
+else
+    UIS.InputBegan:Connect(function(input, gpe)
+        if input.KeyCode == _G.UIToggleKey then
+            toggleUIState()
+        end
+    end)
 end
 
-local function IsVisible(part)
-    if not part or not getgenv().Aleh.Silent.WallCheck then return true end
-    local origin = Camera.CFrame.Position
-    local direction = part.Position - origin
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.IgnoreWater = true
-    local result = workspace:Raycast(origin, direction, raycastParams)
-    return not result or result.Instance:IsDescendantOf(part.Parent)
-end
+-- ===== ЛОГИКА SILENT AIM (без изменений) =====
+local function getClosest()
+    local mousePos = Vector2.new(mouse.X, mouse.Y)
+    local fovRadius = math.max(_G.FOV_RADIUS or 0, 1)
+    local candidates = {}
 
-local function GetClosestToCenter()
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local effectiveRadius = getgenv().Aleh.Silent.FOVRadius
-    if IsShiftLockActive() then effectiveRadius = effectiveRadius * getgenv().Aleh.Silent.ShiftLockFOVBoost end
-    local closestDist = effectiveRadius
-    local targetPlayer = nil
+    local myChar = LocalPlayer.Character
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") and not IsPlayerDownedOrDead(player) then
-            if IgnoredPlayers[player] then continue end
-            
-            local head = player.Character.Head
-            local headPos, onScreen = Camera:WorldToScreenPoint(head.Position)
-            if onScreen and IsVisible(head) then
-                local dist = (Vector2.new(headPos.X, headPos.Y) - center).Magnitude
-                if dist < closestDist then
-                    closestDist = dist
-                    targetPlayer = player
+    for _, v in ipairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer then
+            local char = v.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local isKnocked = false
+                if _G.KnockCheck then
+                    if hum:GetState() == Enum.HumanoidStateType.Physics or hum:GetState() == Enum.HumanoidStateType.Ragdoll then
+                        isKnocked = true
+                    elseif hum.PlatformStand then
+                        isKnocked = true
+                    elseif hum:GetAttribute("Knocked") == true or char:GetAttribute("Knocked") == true then
+                        isKnocked = true
+                    end
+                end
+
+                if not isKnocked then
+                    local part = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+                    if part then
+                        local screenPos, onScreen = cam:WorldToScreenPoint(part.Position)
+                        if onScreen then
+                            local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                            if screenDistance <= fovRadius then
+                                local passesWallCheck = true
+                                if _G.WallCheck then
+                                    local origin = cam.CFrame.Position
+                                    local dir = part.Position - origin
+                                    local dist = dir.Magnitude
+                                    if dist > 0 then
+                                        local params = RaycastParams.new()
+                                        params.FilterType = Enum.RaycastFilterType.Exclude
+                                        params.FilterDescendantsInstances = { myChar, cam }
+                                        local hit = workspace:Raycast(origin, dir.Unit * dist, params)
+                                        if hit and hit.Instance and not hit.Instance:IsDescendantOf(char) then
+                                            passesWallCheck = false
+                                        end
+                                    end
+                                end
+
+                                if passesWallCheck then
+                                    table.insert(candidates, {
+                                        part = part,
+                                        distance = screenDistance
+                                    })
+                                end
+                            end
+                        end
+                    end
                 end
             end
         end
     end
-    return targetPlayer
+
+    local best = nil
+    local bestDistance = math.huge
+    for _, candidate in ipairs(candidates) do
+        if candidate.distance < bestDistance then
+            bestDistance = candidate.distance
+            best = candidate.part
+        end
+    end
+
+    return best
 end
 
-local function GetBestPart(character)
-    if not character then return nil end
+local function setupSilentAim()
+    local handler = nil
+    local success, result = pcall(function()
+        local mods = ReplicatedStorage:FindFirstChild("Modules")
+        if not mods then return nil end
+        local gh = mods:FindFirstChild("GunHandler")
+        if not gh then return nil end
+        return require(gh)
+    end)
 
-    local mousePos = Vector2.new(Mouse.X, Mouse.Y)
-    local bestPart = nil
-    local minDist = math.huge
-
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if root and getgenv().Aleh.Silent.Resolver then
-        if root.Position.Y < getgenv().Aleh.Silent.UndergroundThreshold then
-            ResolvedPosition = character.Head.Position + (root.Velocity * getgenv().Aleh.Silent.Prediction)
+    if success and result then
+        handler = result
+        if handler and handler.getAim then
+            local oldGetAim = handler.getAim
+            handler.getAim = function(origin, maxDist)
+                if not _G.SilentAim_Enabled or not _G.FOV_RADIUS or _G.FOV_RADIUS <= 0 then
+                    return oldGetAim(origin, maxDist)
+                end
+                if _G.RevolverBypass then
+                    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                    if tool and (tool.Name == "[Revolver]" or tool.Name == "Revolver") then
+                        return oldGetAim(origin, maxDist)
+                    end
+                end
+                local target = getClosest()
+                if target and target.Parent then
+                    if _G.KnockCheck then
+                        local hum = target.Parent:FindFirstChildOfClass("Humanoid")
+                        if hum and (hum.Health <= 0 or hum.PlatformStand or hum:GetState() == Enum.HumanoidStateType.Physics) then
+                            return oldGetAim(origin, maxDist)
+                        end
+                    end
+                    local dir = (target.Position - origin)
+                    if dir.Magnitude > 0 then
+                        return dir.Unit, math.min(dir.Magnitude, maxDist or 200)
+                    end
+                end
+                return oldGetAim(origin, maxDist)
+            end
+            print("owwo@aim: Silent Aim успешно внедрён в GunHandler")
         else
-            ResolvedPosition = root.Position + (root.Velocity * getgenv().Aleh.Silent.Prediction)
+            warn("owwo@aim: GunHandler найден, но getAim отсутствует")
         end
     else
-        ResolvedPosition = nil
+        warn("owwo@aim: Не удалось найти GunHandler в ReplicatedStorage.Modules")
     end
-
-    for _, part in ipairs(character:GetChildren()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            local screenPos, onScreen = Camera:WorldToScreenPoint(part.Position)
-            if onScreen and IsVisible(part) then
-                local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                if dist < minDist then
-                    minDist = dist
-                    bestPart = part
-                end
-            end
-        end
-    end
-
-    return bestPart or root or character:FindFirstChild("Head")
 end
 
---// Loops
+task.spawn(setupSilentAim)
+
+ReplicatedStorage.ChildAdded:Connect(function(child)
+    if child.Name == "Modules" then
+        task.wait(1)
+        setupSilentAim()
+    end
+end)
+
+-- ===== ЛОГИКА DELAY CHANGER =====
+local function applyCustomDelay(v)
+    if not _G.DelayChangerEnabled then return end
+    if (v.Name == "ShootingCooldown" or v.Name == "ToleranceCooldown") and v:IsA("ValueBase") then
+        local tool = v:FindFirstAncestorOfClass("Tool")
+        local delayValue = _G.DelayChangerOthers
+        if tool then
+            if tool.Name == "[Revolver]" then delayValue = _G.DelayChangerRevolver
+            elseif tool.Name == "[Double-Barrel SG]" then delayValue = _G.DelayChangerDoubleBarrel
+            elseif tool.Name == "[TacticalShotgun]" then delayValue = _G.DelayChangerTacticalShotgun end
+        end
+        v.Value = delayValue
+        v:GetPropertyChangedSignal("Value"):Connect(function()
+            if v.Value ~= delayValue then v.Value = delayValue end
+        end)
+    end
+end
+
+for _, v in ipairs(game:GetDescendants()) do applyCustomDelay(v) end
+game.DescendantAdded:Connect(function(v) applyCustomDelay(v) end)
+
+-- ===== ЛОГИКА SPEED =====
 RunService.Heartbeat:Connect(function()
-    if not getgenv().Aleh.Silent.Enabled then
-        CachedTarget = nil
-        CachedPart = nil
-        ResolvedPosition = nil
-        return
-    end
-
-    CachedTarget = GetClosestToCenter()
-    if CachedTarget and CachedTarget.Character then
-        CachedPart = GetBestPart(CachedTarget.Character)
-    else
-        CachedPart = nil
-        ResolvedPosition = nil
-    end
-end)
-
-RunService.RenderStepped:Connect(function()
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    FOVCircle.Visible = getgenv().Aleh.FOV.Visible and getgenv().Aleh.Silent.Enabled
-
-    -- Подсветка полностью отключена
-    -- if CachedTarget and CachedTarget.Character then
-    --     if not getgenv().Aleh.Silent.AntiAimView then
-    --         Highlight.Adornee = CachedTarget.Character
-    --         Highlight.Enabled = true
-    --     else
-    --         Highlight.Enabled = false
-    --     end
-    -- else
-    --     Highlight.Enabled = false
-    -- end
-end)
-
---// Silent Aim Hook
-local mt = getrawmetatable(game)
-local oldnamecall = mt.__namecall
-local oldindex = mt.__index
-setreadonly(mt, false)
-
-mt.__namecall = newcclosure(function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
-
-    if not checkcaller() and getgenv().Aleh.Silent.Enabled and CachedPart then
-        if self == workspace and method == "Raycast" then
-            local origin = args[1]
-            if origin and (origin - Camera.CFrame.Position).Magnitude < 15 then
-                local targetPos = ResolvedPosition or (CachedPart.Position + (CachedPart.Velocity * getgenv().Aleh.Silent.Prediction))
-                return {
-                    Position = targetPos,
-                    Instance = CachedPart,
-                    Material = Enum.Material.Plastic,
-                    Normal = Vector3.new(0, 1, 0)
-                }
-            end
-        end
-    end
-
-    return oldnamecall(self, ...)
-end)
-
-mt.__index = newcclosure(function(self, key)
-    if not checkcaller() and getgenv().Aleh.Silent.Enabled and CachedPart and self == Mouse then
-        if key == "Hit" or key == "Target" then
-            local targetPos = ResolvedPosition or (CachedPart.Position + (CachedPart.Velocity * getgenv().Aleh.Silent.Prediction))
-            if key == "Hit" then
-                return CFrame.new(targetPos)
-            else
-                return CachedPart
-            end
-        end
-    end
-    return oldindex(self, key)
-end)
-
-setreadonly(mt, true)
-
---// Toggles
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == getgenv().Aleh.ToggleKey then
-        getgenv().Aleh.Silent.Enabled = not getgenv().Aleh.Silent.Enabled
-        -- Highlight.Enabled = false  -- Закомментировано, так как Highlight удален
-        print("Silent Aim Da Hood (ALEH.CCC PAID):", getgenv().Aleh.Silent.Enabled and "ON" or "OFF")
-    elseif input.KeyCode == Enum.KeyCode.F3 then
-        if IgnoreMenu then
-            IgnoreMenu.Enabled = not IgnoreMenu.Enabled
-            if IgnoreMenu.Enabled then
-                UpdateIgnoreList()
-            end
+    if _G.SpeedMaster and _G.SpeedActive and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+        if hum and hum.WalkSpeed ~= _G.SpeedValue then
+            hum.WalkSpeed = _G.SpeedValue
         end
     end
 end)
 
-print("ALEH.CCC (PAID) - Silent Aim Da Hood carregado com sucesso! Tecla C para toggle, F3 para menu de ignorados.")
+-- Активация по клавише (только для ПК)
+if not IsMobile then
+    UIS.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if _G.SpeedMaster and input.KeyCode == _G.SpeedKey then
+            _G.SpeedActive = not _G.SpeedActive
+        end
+    end)
+end
+
+print("owwo@aim: ~$ UI загружен (мобильная адаптация)")
