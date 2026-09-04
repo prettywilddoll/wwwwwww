@@ -1,4 +1,4 @@
--- OWWO.EXE — ремастер в стиле pwd char (мобильная адаптация)
+-- OWWO.EXE — ремастер в стиле pwd char (мобильная адаптация с кнопкой скорости)
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -15,7 +15,7 @@ local mouse = LocalPlayer:GetMouse()
 -- Определяем мобильное устройство
 local IsMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
 
--- Цветовая тема (пастельный розовый + тёмный нейтральный)
+-- Цветовая тема
 local Theme = {
     AccentColor = Color3.fromRGB(255, 179, 186),
     DimColor = Color3.fromRGB(200, 195, 195),
@@ -29,11 +29,6 @@ local Theme = {
     DarkBg = Color3.fromRGB(18, 12, 14),
     HeaderBg = Color3.fromRGB(25, 18, 20),
     ButtonBg = Color3.fromRGB(235, 245, 250),
-    ApplyDefaultBg = Color3.fromRGB(245, 250, 253),
-    ApplyBorder = Color3.fromRGB(215, 230, 240),
-    ApplyDefaultText = Color3.fromRGB(165, 200, 220),
-    ApplyActiveBg = Color3.fromRGB(160, 165, 175),
-    ApplyActiveText = Color3.fromRGB(255, 255, 255)
 }
 
 -- Глобальные настройки
@@ -71,12 +66,12 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = targetParent
 
--- Мобильная кнопка (увеличена)
+-- Мобильная кнопка показа/скрытия UI (увеличена)
 local MobileToggleBtn
 if IsMobile then
     MobileToggleBtn = Instance.new("ImageButton")
     MobileToggleBtn.Name = "MobileToggleBtn"
-    MobileToggleBtn.Size = UDim2.new(0, 60, 0, 60)          -- увеличен размер
+    MobileToggleBtn.Size = UDim2.new(0, 60, 0, 60)
     MobileToggleBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
     MobileToggleBtn.BackgroundColor3 = Theme.HeaderBg
     MobileToggleBtn.BorderColor3 = Theme.AccentColor
@@ -110,18 +105,16 @@ if IsMobile then
     end)
 end
 
--- Размеры окна в зависимости от платформы
-local WindowSize
-local ElementHeight
-local FontSize
-local SliderHeight
-local PaddingSize
+-- Переменная для кнопки скорости (только мобильные)
+local SpeedToggleBtn = nil
 
+-- Размеры окна в зависимости от платформы
+local WindowSize, ElementHeight, FontSize, SliderHeight, PaddingSize
 if IsMobile then
-    WindowSize = UDim2.new(0.9, 0, 0.85, 0)          -- почти на весь экран
-    ElementHeight = 40                               -- высота строки
+    WindowSize = UDim2.new(0.9, 0, 0.85, 0)
+    ElementHeight = 40
     FontSize = 16
-    SliderHeight = 8                                 -- толщина слайдера
+    SliderHeight = 8
     PaddingSize = 20
 else
     WindowSize = UDim2.new(0, 520, 0, 500)
@@ -137,7 +130,7 @@ WindowOuterBorder.Name = "WindowOuterBorder"
 WindowOuterBorder.Size = WindowSize
 WindowOuterBorder.Position = UDim2.new(0.5, -WindowSize.X.Offset/2, 0.5, -WindowSize.Y.Offset/2)
 if IsMobile then
-    WindowOuterBorder.Position = UDim2.new(0.5, -WindowSize.X.Offset/2, 0.5, -WindowSize.Y.Offset/2)  -- центрирование по масштабу
+    WindowOuterBorder.Position = UDim2.new(0.5, -WindowSize.X.Offset/2, 0.5, -WindowSize.Y.Offset/2)
 end
 WindowOuterBorder.BackgroundColor3 = Theme.TrayColor
 WindowOuterBorder.BorderSizePixel = 0
@@ -176,7 +169,7 @@ local BodyCorner = Instance.new("UICorner")
 BodyCorner.CornerRadius = UDim.new(0, 8)
 BodyCorner.Parent = MainBody
 
--- Заголовок (без кнопки закрытия)
+-- Заголовок
 local HeaderBar = Instance.new("Frame")
 HeaderBar.Name = "HeaderBar"
 local HeaderHeight = IsMobile and 48 or 32
@@ -284,7 +277,7 @@ UIS.InputChanged:Connect(function(input)
     if input == dragInput and dragging then updateDrag(input) end
 end)
 
--- Основной контент (без боковой панели на мобильных)
+-- Основной контент
 local LayoutContent = Instance.new("Frame")
 LayoutContent.Name = "LayoutContent"
 LayoutContent.Size = UDim2.new(1, 0, 1, -HeaderHeight)
@@ -296,7 +289,6 @@ LayoutContent.Parent = MainBody
 
 local WorkspaceFrame
 if IsMobile then
-    -- На мобильных боковая панель не нужна, вся ширина отдаётся контенту
     WorkspaceFrame = Instance.new("Frame")
     WorkspaceFrame.Name = "WorkspaceFrame"
     WorkspaceFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -317,7 +309,7 @@ if IsMobile then
     UIList.Padding = UDim.new(0, IsMobile and 20 or 14)
     UIList.Parent = WorkspaceFrame
 else
-    -- Для ПК оставляем как было (с боковой панелью)
+    -- ПК: боковая панель
     local Sidebar = Instance.new("Frame")
     Sidebar.Name = "Sidebar"
     Sidebar.Size = UDim2.new(0, 120, 1, 0)
@@ -366,7 +358,7 @@ else
     UIList.Parent = WorkspaceFrame
 end
 
--- Вспомогательные функции (адаптированы под мобильные)
+-- Вспомогательные функции
 -- Toggle
 local function CreateToggle(parent, text, defaultState, callback)
     local Row = Instance.new("Frame", parent)
@@ -411,7 +403,7 @@ end
 -- Slider
 local function CreateSlider(parent, name, minVal, maxVal, get, set, isFloat)
     local Row = Instance.new("Frame", parent)
-    Row.Size = UDim2.new(1, 0, 0, ElementHeight + (IsMobile and 10 or 0))  -- чуть выше для слайдера
+    Row.Size = UDim2.new(1, 0, 0, ElementHeight + (IsMobile and 10 or 0))
     Row.BackgroundTransparency = 1
 
     local Lbl = Instance.new("TextLabel", Row)
@@ -519,67 +511,56 @@ local function CreateSlider(parent, name, minVal, maxVal, get, set, isFloat)
     end)
 end
 
--- Keybind (для мобильных заменён на Toggle "Speed Active")
+-- Keybind (только для ПК)
 local keybindListeners = {}
 local function CreateKeybind(parent, text, currentKey, callback)
-    if IsMobile then
-        -- На мобильных вместо привязки клавиши создаём переключатель для SpeedActive
-        local function dummy(v)
-            _G.SpeedActive = v
-            -- Можно также обновить callback, если нужен
-        end
-        return CreateToggle(parent, "Speed Active", _G.SpeedActive, function(v)
-            _G.SpeedActive = v
-        end)
-    else
-        local Row = Instance.new("Frame", parent)
-        Row.Size = UDim2.new(1, 0, 0, ElementHeight)
-        Row.BackgroundTransparency = 1
+    local Row = Instance.new("Frame", parent)
+    Row.Size = UDim2.new(1, 0, 0, ElementHeight)
+    Row.BackgroundTransparency = 1
 
-        local Lbl = Instance.new("TextLabel", Row)
-        Lbl.Size = UDim2.new(0.6, 0, 1, 0)
-        Lbl.BackgroundTransparency = 1
-        Lbl.Text = text
-        Lbl.TextColor3 = Theme.DimTextColor
-        Lbl.Font = Enum.Font.RobotoMono
-        Lbl.TextSize = FontSize
-        Lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local Lbl = Instance.new("TextLabel", Row)
+    Lbl.Size = UDim2.new(0.6, 0, 1, 0)
+    Lbl.BackgroundTransparency = 1
+    Lbl.Text = text
+    Lbl.TextColor3 = Theme.DimTextColor
+    Lbl.Font = Enum.Font.RobotoMono
+    Lbl.TextSize = FontSize
+    Lbl.TextXAlignment = Enum.TextXAlignment.Left
 
-        local BBtn = Instance.new("TextButton", Row)
-        BBtn.Size = UDim2.new(0.4, 0, 1, 0)
-        BBtn.Position = UDim2.new(0.6, 0, 0, 0)
-        BBtn.BackgroundColor3 = Theme.ButtonBg
-        BBtn.BorderColor3 = Theme.BorderColor
-        BBtn.Text = "[" .. currentKey.Name .. "]"
-        BBtn.TextColor3 = Theme.DimColor
-        BBtn.Font = Enum.Font.RobotoMono
-        BBtn.TextSize = FontSize
+    local BBtn = Instance.new("TextButton", Row)
+    BBtn.Size = UDim2.new(0.4, 0, 1, 0)
+    BBtn.Position = UDim2.new(0.6, 0, 0, 0)
+    BBtn.BackgroundColor3 = Theme.ButtonBg
+    BBtn.BorderColor3 = Theme.BorderColor
+    BBtn.Text = "[" .. currentKey.Name .. "]"
+    BBtn.TextColor3 = Theme.DimColor
+    BBtn.Font = Enum.Font.RobotoMono
+    BBtn.TextSize = FontSize
 
-        local listenerState = { listening = false, button = BBtn, callback = callback }
-        BBtn.MouseButton1Click:Connect(function()
-            for _, state in ipairs(keybindListeners) do state.listening = false end
-            listenerState.listening = true
-            BBtn.Text = "..."
-        end)
+    local listenerState = { listening = false, button = BBtn, callback = callback }
+    BBtn.MouseButton1Click:Connect(function()
+        for _, state in ipairs(keybindListeners) do state.listening = false end
+        listenerState.listening = true
+        BBtn.Text = "..."
+    end)
 
-        table.insert(keybindListeners, listenerState)
-        if #keybindListeners == 1 then
-            UIS.InputBegan:Connect(function(io)
-                if io.UserInputType ~= Enum.UserInputType.Keyboard then return end
-                for _, state in ipairs(keybindListeners) do
-                    if state.listening then
-                        state.listening = false
-                        state.button.Text = "[" .. io.KeyCode.Name .. "]"
-                        state.callback(io.KeyCode)
-                        break
-                    end
+    table.insert(keybindListeners, listenerState)
+    if #keybindListeners == 1 then
+        UIS.InputBegan:Connect(function(io)
+            if io.UserInputType ~= Enum.UserInputType.Keyboard then return end
+            for _, state in ipairs(keybindListeners) do
+                if state.listening then
+                    state.listening = false
+                    state.button.Text = "[" .. io.KeyCode.Name .. "]"
+                    state.callback(io.KeyCode)
+                    break
                 end
-            end)
-        end
+            end
+        end)
     end
 end
 
--- Создание элементов управления
+-- === СОЗДАНИЕ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ ===
 CreateToggle(WorkspaceFrame, "Silent Aim", _G.SilentAim_Enabled, function(v) _G.SilentAim_Enabled = v end)
 CreateSlider(WorkspaceFrame, "FOV Radius", 0, 1000, function() return _G.FOV_RADIUS end, function(v) _G.FOV_RADIUS = v end, false)
 CreateToggle(WorkspaceFrame, "Wall Check", _G.WallCheck, function(v) _G.WallCheck = v end)
@@ -594,17 +575,72 @@ CreateSlider(WorkspaceFrame, "[TacticalShotgun] Delay", 0, 0.5, function() retur
 CreateSlider(WorkspaceFrame, "Others Delay", 0, 0.5, function() return _G.DelayChangerOthers end, function(v) _G.DelayChangerOthers = v end, true)
 
 -- Speed
+-- Speed Master
 CreateToggle(WorkspaceFrame, "Speed Master", _G.SpeedMaster, function(v)
     _G.SpeedMaster = v
     if not _G.SpeedMaster then
         _G.SpeedActive = false
+        -- Удаляем кнопку скорости, если она есть
+        if SpeedToggleBtn then
+            SpeedToggleBtn:Destroy()
+            SpeedToggleBtn = nil
+        end
     else
         pcall(function()
             game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Speed Master", Text = "Respawn to apply speed changes!", Duration = 3 })
         end)
+        if IsMobile then
+            -- Создаём плавающую кнопку, если её нет
+            if not SpeedToggleBtn then
+                SpeedToggleBtn = Instance.new("ImageButton")
+                SpeedToggleBtn.Name = "SpeedToggleBtn"
+                SpeedToggleBtn.Size = UDim2.new(0, 60, 0, 60)
+                SpeedToggleBtn.Position = UDim2.new(0.85, 0, 0.75, 0) -- рядом с прыжком
+                SpeedToggleBtn.BackgroundColor3 = Theme.AccentColor
+                SpeedToggleBtn.BorderColor3 = Theme.BorderColor
+                SpeedToggleBtn.BorderSizePixel = 2
+                SpeedToggleBtn.Image = ""
+                SpeedToggleBtn.Text = "SPEED"
+                SpeedToggleBtn.TextColor3 = Color3.new(1,1,1)
+                SpeedToggleBtn.Font = Enum.Font.RobotoMono
+                SpeedToggleBtn.TextSize = 14
+                SpeedToggleBtn.ZIndex = 100
+                SpeedToggleBtn.Parent = ScreenGui
+                -- Скругление
+                local corner = Instance.new("UICorner")
+                corner.CornerRadius = UDim.new(1, 0)
+                corner.Parent = SpeedToggleBtn
+
+                -- Функция обновления внешнего вида
+                local function updateSpeedBtn()
+                    if SpeedToggleBtn then
+                        if _G.SpeedActive then
+                            SpeedToggleBtn.BackgroundColor3 = Theme.AccentColor
+                            SpeedToggleBtn.Text = "ON"
+                        else
+                            SpeedToggleBtn.BackgroundColor3 = Theme.DimColor
+                            SpeedToggleBtn.Text = "OFF"
+                        end
+                    end
+                end
+                updateSpeedBtn()
+
+                -- Нажатие переключает скорость
+                SpeedToggleBtn.MouseButton1Click:Connect(function()
+                    _G.SpeedActive = not _G.SpeedActive
+                    updateSpeedBtn()
+                end)
+            end
+        end
     end
 end)
-CreateKeybind(WorkspaceFrame, "Speed Key", _G.SpeedKey, function(k) _G.SpeedKey = k end)
+
+-- Speed Key (только для ПК)
+if not IsMobile then
+    CreateKeybind(WorkspaceFrame, "Speed Key", _G.SpeedKey, function(k) _G.SpeedKey = k end)
+end
+
+-- Speed Value
 CreateSlider(WorkspaceFrame, "Speed Value", 16, 1000, function() return _G.SpeedValue end, function(v) _G.SpeedValue = v end, false)
 
 -- Show UI
@@ -613,7 +649,50 @@ local updateShowUIToggle = CreateToggle(WorkspaceFrame, "Show UI", _G.UIVisible,
     WindowOuterBorder.Visible = _G.UIVisible
 end)
 
--- Управление горячей клавишей (правая Shift) – для мобильных только через кнопку
+-- При старте, если Speed Master уже включен и это мобилка, создаём кнопку
+if IsMobile and _G.SpeedMaster then
+    -- Имитируем включение (создаём кнопку)
+    -- Просто вызываем ту же логику, но без изменения состояния
+    if not SpeedToggleBtn then
+        SpeedToggleBtn = Instance.new("ImageButton")
+        SpeedToggleBtn.Name = "SpeedToggleBtn"
+        SpeedToggleBtn.Size = UDim2.new(0, 60, 0, 60)
+        SpeedToggleBtn.Position = UDim2.new(0.85, 0, 0.75, 0)
+        SpeedToggleBtn.BackgroundColor3 = Theme.AccentColor
+        SpeedToggleBtn.BorderColor3 = Theme.BorderColor
+        SpeedToggleBtn.BorderSizePixel = 2
+        SpeedToggleBtn.Image = ""
+        SpeedToggleBtn.Text = "SPEED"
+        SpeedToggleBtn.TextColor3 = Color3.new(1,1,1)
+        SpeedToggleBtn.Font = Enum.Font.RobotoMono
+        SpeedToggleBtn.TextSize = 14
+        SpeedToggleBtn.ZIndex = 100
+        SpeedToggleBtn.Parent = ScreenGui
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(1, 0)
+        corner.Parent = SpeedToggleBtn
+
+        local function updateSpeedBtn()
+            if SpeedToggleBtn then
+                if _G.SpeedActive then
+                    SpeedToggleBtn.BackgroundColor3 = Theme.AccentColor
+                    SpeedToggleBtn.Text = "ON"
+                else
+                    SpeedToggleBtn.BackgroundColor3 = Theme.DimColor
+                    SpeedToggleBtn.Text = "OFF"
+                end
+            end
+        end
+        updateSpeedBtn()
+
+        SpeedToggleBtn.MouseButton1Click:Connect(function()
+            _G.SpeedActive = not _G.SpeedActive
+            updateSpeedBtn()
+        end)
+    end
+end
+
+-- Управление показом UI (кнопка / клавиша)
 local function toggleUIState()
     _G.UIVisible = not _G.UIVisible
     WindowOuterBorder.Visible = _G.UIVisible
@@ -632,7 +711,7 @@ else
     end)
 end
 
--- ===== ЛОГИКА SILENT AIM (без изменений) =====
+-- ===== ЛОГИКА SILENT AIM =====
 local function getClosest()
     local mousePos = Vector2.new(mouse.X, mouse.Y)
     local fovRadius = math.max(_G.FOV_RADIUS or 0, 1)
@@ -799,8 +878,18 @@ if not IsMobile then
         if gpe then return end
         if _G.SpeedMaster and input.KeyCode == _G.SpeedKey then
             _G.SpeedActive = not _G.SpeedActive
+            -- Обновляем внешний вид кнопки (на ПК её нет, но на случай если есть)
+            if SpeedToggleBtn then
+                if _G.SpeedActive then
+                    SpeedToggleBtn.BackgroundColor3 = Theme.AccentColor
+                    SpeedToggleBtn.Text = "ON"
+                else
+                    SpeedToggleBtn.BackgroundColor3 = Theme.DimColor
+                    SpeedToggleBtn.Text = "OFF"
+                end
+            end
         end
     end)
 end
 
-print("owwo@aim: ~$ UI загружен (мобильная адаптация)")
+print("owwo@aim: ~$ UI загружен (мобильная адаптация с кнопкой скорости)")
